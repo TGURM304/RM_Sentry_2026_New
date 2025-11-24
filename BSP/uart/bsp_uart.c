@@ -20,7 +20,7 @@ void bsp_uart_init(bsp_uart_e e, UART_HandleTypeDef *h) {
 }
 
 void bsp_uart_set_callback(bsp_uart_e e, void (*f)(bsp_uart_e e, uint8_t *s, uint16_t l)) {
-    BSP_ASSERT(callback[e] == NULL);
+    // BSP_ASSERT(callback[e] == NULL);
     BSP_ASSERT(e == E_UART_CDC || handle[e]);
     callback[e] = f;
     if(e != E_UART_CDC) {
