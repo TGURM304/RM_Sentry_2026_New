@@ -141,11 +141,11 @@ void app_ins_task(void *args) {
     while(true) {
         bsp_imu_read(&data.raw);
 
-        if(++freq_cnt == 100)
-            __HAL_TIM_SetCompare(IMU_TEMPERATURE_CONTROL_TIMER,
-                                 IMU_TEMPERATURE_CONTROL_CHANNEL,
-                                 std::max(0.0f, temp_pid.update(data.raw.temp, 40))),
-                freq_cnt = 0;
+        // if(++freq_cnt == 100)
+        //     __HAL_TIM_SetCompare(IMU_TEMPERATURE_CONTROL_TIMER,
+        //                          IMU_TEMPERATURE_CONTROL_CHANNEL,
+        //                          std::max(0.0f, temp_pid.update(data.raw.temp, 40))),
+        //         freq_cnt = 0;
 
         if(ins_flag == 2) {
             // 先做陀螺零偏

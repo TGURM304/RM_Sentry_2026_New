@@ -25,6 +25,8 @@
 #include "dev_motor_dji.h"
 #include "dev_motor_dm.h"
 #include "sys_task.h"
+#include "app_vision.h"
+#include "ctrl_motor_base_pid.h"
 
 #ifdef COMPILE_GIMBAL
 
@@ -33,11 +35,9 @@
 using namespace Motor;
 using namespace Controller;
 
-DJIMotor trigger("trigger", DJIMotor::M2006, { 0x01, E_CAN3, DJIMotor::CURRENT });
-
 DJIMotor s_yaw("gimbal_yaw_small", DJIMotor::GM6020, { 0x04, E_CAN2, DJIMotor::CURRENT });
-PID s_yaw_speed(60, 0.8, 0, 16384, 10000);
-PID s_yaw_angle(15, 0, 0, 360, 0);
+PID s_yaw_speed(60, 0.9, 0, 16384, 10000);
+PID s_yaw_angle(15, 0, 0, 720, 0);
 
 DJIMotor pit("gimbal_pit", DJIMotor::GM6020, { 0x03, E_CAN2, DJIMotor::CURRENT });
 PID pit_speed(80, 0.5, 0, 16384, 10000);
@@ -49,6 +49,24 @@ DMMotor b_yaw("gimbal_yaw_big", DMMotor::J4310, (DMMotor::Param) {
 });
 PID b_yaw_speed(0.018, 0.0002, 0, 10, 6);
 PID b_yaw_angle(10, 0, 0, 720, 540);
+
+MotorController m_trigger(std::make_unique <DJIMotor>(
+    "trigger",
+    DJIMotor::M2006,
+    (DJIMotor::Param) {.id = 0x01,.port = E_CAN3,.mode = DJIMotor::CURRENT}
+));
+
+MotorController m_left_shoot(std::make_unique <DJIMotor>(
+    "left_shoot",
+    DJIMotor::M3508,
+    (DJIMotor::Param) {.id = 0x01,.port = E_CAN1,.mode = DJIMotor::CURRENT}
+));
+
+MotorController m_right_shoot(std::make_unique <DJIMotor>(
+    "right_shoot",
+    DJIMotor::M3508,
+    (DJIMotor::Param) {.id = 0x02,.port = E_CAN1,.mode = DJIMotor::CURRENT}
+));
 
 // 将编码器值(0~8191, 顺时针减小)转换为 [0,360) 角度，逆时针为正
 static inline double encoder_to_deg_ccw(int16_t enc, int16_t counts_per_rev)
@@ -133,24 +151,28 @@ void set_target(bsp_uart_e e, uint8_t *s, uint16_t l) {
     sscanf((char *) s, "%f", &target);
 }
 
-double s_yaw_target;
-double s_yaw_current;
-double s_yaw_output;
+float s_yaw_target;
+float s_yaw_current;
+float s_yaw_output;
 
+float pit_target;
+float pit_current;
+float pit_output;
 
-double pit_target;
-double pit_current;
-double pit_output;
+float s_yaw_enc_deg;
+float b_yaw_real_speed;
+float b_yaw_target;
+float b_yaw_current;
+float b_yaw_output;
 
-
-double s_yaw_enc_deg;
-double b_yaw_real_speed;
-double b_yaw_target;
-double b_yaw_current;
-double b_yaw_output;
+double trigger_speed;
+double left_shoot_speed;
+double right_shoot_speed;
 
 const auto ins = app_ins_data();
 const auto rc = bsp_rc_data();
+
+bool ctrl_flag = false;
 
 // 静态任务，在 CubeMX 中配置
 void app_gimbal_task(void *args) {
@@ -168,54 +190,97 @@ void app_gimbal_task(void *args) {
     while(true) {
 
 
+        //控制逻辑区，遥控器作为安全控制器和控制源选择器
+        if(bsp_time_get_ms() - rc->timestamp <= 50) {
+            if(rc->s_r == -1) {
+                //备用,目前当作失能模式,情况同控制器离线
+                trigger_speed = 0;
+                left_shoot_speed = 0;
+                right_shoot_speed = 0;
+            }else if(rc->s_r == 0) {
+                //遥控器控制区
+                //云台控制
+                pit_target -= static_cast <float> (rc->rc_r[1]) * 0.0002f;
+                s_yaw_target -= static_cast <float> (rc->rc_r[0]) * 0.0006f;
+                if(rc->s_l == 0) {
+                    //不射击
+                    trigger_speed = 0;
+                    left_shoot_speed = 0;
+                    right_shoot_speed = 0;
+                }else if(rc->s_l == 1) {
+                    //射击
+                    trigger_speed = -2000;
+                    left_shoot_speed = 7500;
+                    right_shoot_speed = -7500;
+                }else if(rc->s_l == -1) {
+                    //退弹(因为拨弹盘有机械限位，所以只有摩擦轮反转
+                    trigger_speed = 0;
+                    left_shoot_speed = -7500;
+                    right_shoot_speed = 7500;
+                }
+            }else if(rc->s_r == 1) {
+                //小电脑控制区
+                bool control_by_pc = true;//占位符，此处填写哨兵控制代码
+            }
+        }else {
+            //安全控制器离线:失能,Yyp位置不控制(维持原位)，xy速度和shooter速度置为0,
+            trigger_speed = 0;
+            left_shoot_speed = 0;
+            right_shoot_speed = 0;
+        }
 
+
+
+        //电机控制区，分为pit轴，小yaw轴，大yaw轴控制、VxVy控制发送、摩擦轮和拨弹盘控制
         //pit轴控制量设置
-        // pit_target = static_cast <float> (rc->rc_r[1]) / 25.0f;//测试用
-        pit_target -= static_cast <float> (rc->rc_r[1]) * 0.0002f;
         if (pit_target < -3) pit_target = -3;//pitch限位
         if (pit_target > 25) pit_target = 25;
         pit_current = ins->roll;
         //pit轴控制
         pit_output = pit_target;
-        pit_output = pit_angle.update(static_cast<float>(pit_current), static_cast<float>(pit_output));
-        pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), static_cast<float>(pit_output));
-        pit.update(static_cast<float>(pit_output));
+        pit_output = pit_angle.update((pit_current), (pit_output));
+        pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
+        pit.update((pit_output));
 
 
         //小yaw轴状态量设置
         yaw_unwrapped = unwrap_yaw_deg(ins->yaw);
         //小yaw轴控制量设置
-        // s_yaw_target = static_cast <float> (rc->rc_r[0]) / 25.0f;//测试用
-        s_yaw_target -= static_cast <float> (rc->rc_r[0]) * 0.0006f;
-        s_yaw_current = yaw_unwrapped;
+        s_yaw_current = static_cast<float>(yaw_unwrapped);
         //小yaw轴控制
         s_yaw_output = s_yaw_target;
-        s_yaw_output = s_yaw_angle.update(static_cast<float>(s_yaw_current), static_cast<float>(s_yaw_output));
-        s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), static_cast<float>(s_yaw_output));
-        s_yaw.update(static_cast<float>(s_yaw_output));
+        s_yaw_output = s_yaw_angle.update((s_yaw_current), (s_yaw_output));
+        s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output));
+        s_yaw.update((s_yaw_output));
 
 
 
-        //重新使能达妙
-        if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
-            b_yaw.reset();
-            b_yaw.enable();
-        }
         //大yaw状态量设置
-        s_yaw_enc_deg = encoder_to_deg_mid_zero(s_yaw.feedback_.angle,700,8192);//小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
-        b_yaw_real_speed = b_yaw.feedback_.vel - B_YAW_ZERO_SPEED;//正对应往右转（顺时针
+        s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 700, 8192));//小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
+        b_yaw_real_speed = static_cast<float>(b_yaw.feedback_.vel) - B_YAW_ZERO_SPEED;//正对应往右转（顺时针
         //大yaw控制量设置
-        // b_yaw_target = static_cast <float> (rc->rc_r[0]) ;//速度环测试用
         b_yaw_target = 0;
         b_yaw_current = s_yaw_enc_deg;
         //大yaw轴控制
         b_yaw_output = b_yaw_target;
-        b_yaw_output = b_yaw_angle.update(static_cast<float>(-b_yaw_current), static_cast<float>(b_yaw_target));
-        b_yaw_output = b_yaw_speed.update(static_cast<float>(b_yaw_real_speed), static_cast<float>(b_yaw_output));
-        //大yaw控制
-        b_yaw.control(0,0,0,0,static_cast<float>(b_yaw_output));//正对应往右转（顺时针
+        b_yaw_output = b_yaw_angle.update((-b_yaw_current), (b_yaw_target));
+        b_yaw_output = b_yaw_speed.update((b_yaw_real_speed), (b_yaw_output));
+        //重新使能并控制
+        if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
+            b_yaw.reset();
+            b_yaw.enable();
+        }
+        b_yaw.control(0,0,0,0,(b_yaw_output));//正对应往右转（顺时针
 
 
+        //发射机构控制
+        m_trigger.update(trigger_speed);
+        m_left_shoot.update(left_shoot_speed);
+        m_right_shoot.update(right_shoot_speed);
+
+
+
+        //调试区
         app_msg_vofa_send(E_UART_DEBUG,
             // pit.status.angle,
             // pit.status.speed,
@@ -233,17 +298,17 @@ void app_gimbal_task(void *args) {
             // s_yaw_current,
             // s_yaw_output
 
-            s_yaw_enc_deg,
-            b_yaw_real_speed,
-            b_yaw_output,
-            static_cast <float> (rc->rc_r[0]),
-            ins->yaw,
-            s_yaw.feedback_.angle,
-            yaw_unwrapped
+            // s_yaw_enc_deg,
+            // b_yaw_real_speed,
+            // b_yaw_output,
+            // static_cast <float> (rc->rc_r[0]),
+            // ins->yaw,
+            // s_yaw.feedback_.angle,
+            // yaw_unwrapped
 
-
-            // trigger.status.angle,
-            // trigger.status.speed,
+            m_trigger.device()->angle,
+            m_left_shoot.device()->speed,
+            m_right_shoot.device()->speed
 
 
 
@@ -257,7 +322,27 @@ void app_gimbal_init() {
     s_yaw.init();
     b_yaw.init();
     pit.init();
-    trigger.init();
+
+    m_trigger.add_controller(std::make_unique <Controller::MotorBasePID> (
+        Controller::MotorBasePID::PID_SPEED,
+        std::make_unique <Controller::PID> (10.0, 1.0, 0.0, 16384, 10000),
+        nullptr
+    ));
+    m_trigger.init();
+
+    m_left_shoot.add_controller(std::make_unique <Controller::MotorBasePID> (
+        Controller::MotorBasePID::PID_SPEED,
+        std::make_unique <Controller::PID> (15.0, 1.0, 0.0, 16384, 10000),
+        nullptr
+    ));
+    m_left_shoot.init();
+
+    m_right_shoot.add_controller(std::make_unique <Controller::MotorBasePID> (
+        Controller::MotorBasePID::PID_SPEED,
+        std::make_unique <Controller::PID> (15.0, 1.0, 0.0, 16384, 10000),
+        nullptr
+    ));
+    m_right_shoot.init();
 
 }
 
