@@ -49,7 +49,7 @@ DMMotor b_yaw("gimbal_yaw_big", DMMotor::J4310, (DMMotor::Param) {
     .p_max = 12.5, .v_max = 30, .t_max = 10, .kp_max = 500, .kd_max = 5
 });
 PID b_yaw_speed(0.015, 0.0002, 0, 10, 6);
-PID b_yaw_angle(10, 0, 0, 960, 720);
+PID b_yaw_angle(15, 0.008, 0, 720, 540);
 
 MotorController m_trigger(std::make_unique <DJIMotor>(
     "trigger",
