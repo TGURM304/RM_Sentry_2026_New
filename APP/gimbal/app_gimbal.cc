@@ -48,8 +48,8 @@ DMMotor b_yaw("gimbal_yaw_big", DMMotor::J4310, (DMMotor::Param) {
     .slave_id = 0x06, .master_id = 0x05, .port = E_CAN3, .mode = DMMotor::MIT,
     .p_max = 12.5, .v_max = 30, .t_max = 10, .kp_max = 500, .kd_max = 5
 });
-PID b_yaw_speed(0.018, 0.0002, 0, 10, 6);
-PID b_yaw_angle(10, 0, 0, 720, 540);
+PID b_yaw_speed(0.015, 0.0002, 0, 10, 6);
+PID b_yaw_angle(10, 0, 0, 960, 720);
 
 MotorController m_trigger(std::make_unique <DJIMotor>(
     "trigger",
@@ -184,9 +184,9 @@ app_msg_can_receiver <app_msg_chassis_to_gimbal> chassis(E_CAN3, 0x044);
 void send_msg_to_chassis() {
     app_msg_gimbal_to_chassis pkg = {
         .ins_yaw = ins->yaw,
-        .vx = static_cast<float>(rc->rc_l[0]),
-        .vy = static_cast<float>(rc->rc_l[1]),
-        .rotate = static_cast<float>(rc->reserved),
+        .vx = chassis_vx,
+        .vy = chassis_vy,
+        .rotate = chassis_rotate,
         .b_yaw_cnt = b_yaw.feedback_.pos,
 
     };
@@ -226,11 +226,19 @@ void app_gimbal_task(void *args) {
                 trigger_speed = 0;
                 left_shoot_speed = 0;
                 right_shoot_speed = 0;
+                chassis_vx = 0;
+                chassis_vy = 0;
+                chassis_rotate = 0;
             }else if(rc->s_r == 0) {
                 //遥控器控制区
                 //云台控制
                 pit_target -= static_cast <float> (rc->rc_r[1]) * 0.0002f;
                 s_yaw_target -= static_cast <float> (rc->rc_r[0]) * 0.0006f;
+                //底盘控制
+                chassis_vx = static_cast<float>(3.0*rc->rc_l[0]);
+                chassis_vy = static_cast<float>(3.0*rc->rc_l[1]);
+                chassis_rotate = static_cast<float>(3.0*rc->reserved);
+                //射击控制
                 if(rc->s_l == 0) {
                     //不射击
                     trigger_speed = 0;
@@ -256,13 +264,16 @@ void app_gimbal_task(void *args) {
             trigger_speed = 0;
             left_shoot_speed = 0;
             right_shoot_speed = 0;
+            chassis_vx = 0;
+            chassis_vy = 0;
+            chassis_rotate = 0;
         }
 
 
 
         //电机控制区，分为pit轴，小yaw轴，大yaw轴控制、VxVy控制发送、摩擦轮和拨弹盘控制
         //pit轴控制量设置
-        if (pit_target < -15) pit_target = -15;//pitch限位
+        if (pit_target < -5) pit_target = -5;//pitch限位
         if (pit_target > 25) pit_target = 25;
         pit_current = ins->roll;
         //pit轴控制
@@ -299,8 +310,8 @@ void app_gimbal_task(void *args) {
             b_yaw.reset();
             b_yaw.enable();
         }
-        // b_yaw.control(0,0,0,0,(b_yaw_output));//控制，正对应顺时针转
-        b_yaw.control(0,0,0,0,0);//发空包只为了得到反馈数据
+        b_yaw.control(0,0,0,0,(b_yaw_output));//控制，正对应顺时针转
+        // b_yaw.control(0,0,0,0,0);//测试，发空包,为了得到反馈数据
 
 
         //发射机构控制
@@ -328,13 +339,13 @@ void app_gimbal_task(void *args) {
             // s_yaw_current,
             // s_yaw_output
 
-            // s_yaw_enc_deg,
-            // b_yaw_real_speed,
-            // b_yaw_output,
-            // static_cast <float> (rc->rc_r[0]),
-            // ins->yaw,
-            // s_yaw.feedback_.angle,
-            // yaw_unwrapped
+            s_yaw_enc_deg,
+            b_yaw_real_speed,
+            b_yaw_output,
+            static_cast <float> (rc->rc_r[0]),
+            ins->yaw,
+            s_yaw.feedback_.angle,
+            yaw_unwrapped
 
             // m_trigger.device()->angle,
             // m_left_shoot.device()->speed,
@@ -342,11 +353,11 @@ void app_gimbal_task(void *args) {
 
             // chassis()->robot_id,
             // chassis()->robot_level
-            static_cast<float>(rc->rc_l[0]),
-            static_cast<float>(rc->rc_l[1]),
-            static_cast<float>(rc->reserved),
-            chassis.timestamp,
-            b_yaw.feedback_.pos
+            // static_cast<float>(rc->rc_l[0]),
+            // static_cast<float>(rc->rc_l[1]),
+            // static_cast<float>(rc->reserved),
+            // chassis.timestamp,
+            // b_yaw.feedback_.pos
         );
 
         OS::Task::SleepMilliseconds(1);
@@ -354,9 +365,9 @@ void app_gimbal_task(void *args) {
 }
 
 void app_gimbal_init() {
-    // s_yaw.init();
+    s_yaw.init();
     b_yaw.init();
-    // pit.init();
+    pit.init();
 
 
     m_trigger.add_controller(std::make_unique <Controller::MotorBasePID> (

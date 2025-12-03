@@ -137,25 +137,40 @@ void motor_update(double vx, double vy, double rotate) {
 
 int8_t send_count = 0;
 
-float encoder_to_angle(int32_t enc, int32_t zero_offset)
+float encoder_to_angle_360(int32_t enc, int32_t zero_offset)
 {
-    // 统一规整到 0~65535
+    // 1. 规整到 0~65535
     enc %= 65536;
     if (enc < 0) enc += 65536;
 
     zero_offset %= 65536;
     if (zero_offset < 0) zero_offset += 65536;
 
-    // 以 zero_offset 为机械零点，并把它映射到“原公式”的 32768 位置
-    int32_t enc_rel = enc - zero_offset + 32768;
+    // 2. 计算相对零点的偏移（允许跨圈），结果先在 -65535~65535
+    int32_t diff = enc - zero_offset;
 
-    // 再规整到 0~65535
-    enc_rel %= 65536;
-    if (enc_rel < 0) enc_rel += 65536;
+    // 3. 折叠到一圈内：用 16384（一圈脉冲数）取模，得到 0~16383 的相对位置
+    // 先移动到正数再取模，保证 C 下取模为正
+    int32_t pos_in_turn = diff % 16384;
+    if (pos_in_turn < 0) pos_in_turn += 16384;
 
-    // 线性映射: enc_rel=32768 -> 0°, 65536 -> 720°, 0 -> -720°
-    return (float)(enc_rel - 32768) * 720.0f / 32768.0f;
+    // 现在约定：零点位置对应 pos_in_turn = 0
+    // 我们希望：
+    //  pos_in_turn = 0       -> -180°
+    //  pos_in_turn = 8192    ->   0°
+    //  pos_in_turn = 16384   -> +180° ≡ -180°
+    //
+    // 线性映射公式：angle = (pos_in_turn / 16384.0) * 360.0 - 180.0
+    float angle = (float)pos_in_turn * 360.0f / 16384.0f - 180.0f;
+
+    // 为避免在 16384 精度误差导致得到 +180.0f，可做个小处理：
+    if (angle >= 180.0f) {
+        angle -= 360.0f; // 保证范围为 [-180, 180)
+    }
+
+    return angle;
 }
+
 
 //双板通信
 //收
@@ -192,37 +207,52 @@ void app_chassis_task(void *args) {
 	    }
 
 
-	    // if (bsp_time_get_ms() - gimbal.timestamp<100)
-	    // {
-	        vx = gimbal()->vx * 1.0;
-	        vy = gimbal()->vy * 1.0;
+	    if (bsp_time_get_ms() - gimbal.timestamp<100)
+	    {
+	        vx = -gimbal()->vx * 1.0;
+	        vy = -gimbal()->vy * 1.0;
 	        rotate = gimbal()->rotate * 1.0;
-	    // }else {
-	        // vx=vy=rotate = 0;
-	    // }
+	    }else {
+	        vx=vy=rotate = 0;
+	    }
 
 
 
 	    auto theta = std::atan2(vy, vx), r = std::sqrt((vx * vx) + (vy * vy));
 	    // theta -= M_PI / 4096;//无解算git
-	    theta -= encoder_to_angle(gimbal()->b_yaw_cnt,3798) * M_PI / 180.0;//底盘陀螺仪的小陀螺结算
+	    theta -= encoder_to_angle_360(gimbal()->b_yaw_cnt,3600) * M_PI / 180.0;//大yaw正方向解算
 	    vx = r * std::cos(theta), vy = r * std::sin(theta);
 
-	    if(rotate == 0) rotate = eps;
-	    if(vx == 0 and vy == 0) {
-	        if(rotate > eps or zero_count == 500) {
-	            sw_1.update( rotate / M_SQRT2,  rotate / M_SQRT2);
-	            sw_2.update( rotate / M_SQRT2, -rotate / M_SQRT2);
-	            sw_3.update(-rotate / M_SQRT2, -rotate / M_SQRT2);
-	            sw_4.update(-rotate / M_SQRT2,  rotate / M_SQRT2);
-	        } else {
-	            zero_count ++;
-	            motor_update(vx, vy, rotate);
-	        }
-	    } else {
-	        zero_count = 0;
+	    //防滑控制
+	    // if(rotate == 0) rotate = eps;
+	    // if(vx == 0 and vy == 0) {
+	    //     if(rotate > eps or zero_count == 500) {
+	    //         sw_1.update( rotate / M_SQRT2,  rotate / M_SQRT2);
+	    //         sw_2.update( rotate / M_SQRT2, -rotate / M_SQRT2);
+	    //         sw_3.update(-rotate / M_SQRT2, -rotate / M_SQRT2);
+	    //         sw_4.update(-rotate / M_SQRT2,  rotate / M_SQRT2);
+	    //     } else {
+	    //         zero_count ++;
+	    //         motor_update(vx, vy, rotate);
+	    //     }
+	    // } else {
+	    //     zero_count = 0;
+	    //     motor_update(vx, vy, rotate);
+	    // }
+
+	    //正常控制
+	    if(vx == 0 and vy == 0 and rotate ==0) {
+            //舵不更新，轮速为0
+	        s_1.relax(), s_2.relax(), s_3.relax(), s_4.relax();
+	        w_1.update(0);
+	        w_2.update(0);
+	        w_3.update(0);
+	        w_4.update(0);
+	    }else {
+	        s_1.activate(), s_2.activate(), s_3.activate(), s_4.activate();
 	        motor_update(vx, vy, rotate);
 	    }
+
 
 
 
@@ -234,7 +264,11 @@ void app_chassis_task(void *args) {
 	                                    // s_4.device()->angle,  //5765
 	                                    gimbal()->ins_yaw,
 	                                    gimbal()->b_yaw_cnt,
-	                                    encoder_to_angle(gimbal()->b_yaw_cnt,4096)
+	                                    encoder_to_angle_360(gimbal()->b_yaw_cnt,4096),
+	                                    bsp_time_get_ms(),
+	                                    gimbal.timestamp,
+	                                    encoder_to_angle_360(gimbal()->b_yaw_cnt,3600) * M_PI / 180.0
+	                                    // encoder_to_angle_360(gimbal()->b_yaw_cnt,5041)
 	                                    // gimbal()->vx,
 	                                    // gimbal()->vy,
 	                                    // gimbal()->rotate,
