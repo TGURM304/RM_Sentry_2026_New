@@ -103,7 +103,7 @@ void bsp_hw_init() {
     bsp_can_init(E_CAN1, &hfdcan1);
     bsp_can_init(E_CAN2, &hfdcan2);
     bsp_can_init(E_CAN3, &hfdcan3);
-    bsp_uart_init(E_UART_DEBUG, &huart1);
+    bsp_uart_init(E_UART_DEBUG, &huart10);
 }
 
 // 放一些系统级任务

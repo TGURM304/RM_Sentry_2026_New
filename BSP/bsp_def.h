@@ -24,6 +24,7 @@ __attribute__((unused)) static void bsp_assert_err(const char *file, uint32_t li
     vTaskSuspendAll();
     bsp_led_set(255, 0, 0);
     bsp_buzzer_quiet();
+    __asm__ __volatile__("bkpt 0;");
     while(1)
         __NOP();
 }

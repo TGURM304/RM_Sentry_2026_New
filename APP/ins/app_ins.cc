@@ -45,7 +45,7 @@ void app_ins_init() {
     } else {
         temp_pid.set_para(12500, 10, 1, 25000, 10000);
     }
-    HAL_TIM_PWM_Start(IMU_TEMPERATURE_CONTROL_TIMER, IMU_TEMPERATURE_CONTROL_CHANNEL);
+    // HAL_TIM_PWM_Start(IMU_TEMPERATURE_CONTROL_TIMER, IMU_TEMPERATURE_CONTROL_CHANNEL);
     IMU_QuaternionEKF_Init(10, 0.001, 10000000, 1, 0.001f, 0);
 
     bsp_flash_read("ins", &ins_flash_data, sizeof(ins_flash_data));
@@ -148,17 +148,37 @@ void app_ins_task(void *args) {
                 freq_cnt = 0;
 
         if(ins_flag == 2) {
-            double gyro[3] = { data.raw.gyro[0] - gyro_correct[0],
-                               data.raw.gyro[1] - gyro_correct[1],
-                               data.raw.gyro[2] - gyro_correct[2] };
-            IMU_QuaternionEKF_Update(static_cast<float>(gyro[0]),
-                                     static_cast<float>(gyro[1]),
-                                     static_cast<float>(gyro[2]),
-                                     data.raw.accel[0],
-                                     data.raw.accel[1],
-                                     data.raw.accel[2]);
+            // 先做陀螺零偏
+            double gyro_sensor[3] = {
+                data.raw.gyro[0] - gyro_correct[0],
+                data.raw.gyro[1] - gyro_correct[1],
+                data.raw.gyro[2] - gyro_correct[2]
+            };
+
+            // 这里假设 IMU 整体翻面 180°，且选择「绕另一条水平轴（与之前相反）旋转 180°」
+            // 之前版本等价于只对 Z 取反，现在改为：假设是绕 X 轴旋转 180°（示例），
+            // 如果你之前用的实际上是绕 Y 轴，可以把下面 X/Y 的符号分布对调。
+            // 数学上：X' =  X, Y' = -Y, Z' = -Z
+            double gyro_body[3];
+            double accel_body[3];
+
+            gyro_body[0]  =  gyro_sensor[0];
+            gyro_body[1]  = -gyro_sensor[1];
+            gyro_body[2]  = -gyro_sensor[2];
+
+            accel_body[0] =  data.raw.accel[0];
+            accel_body[1] = -data.raw.accel[1];
+            accel_body[2] = -data.raw.accel[2];
+
+            IMU_QuaternionEKF_Update(static_cast<float>(gyro_body[0]),
+                                     static_cast<float>(gyro_body[1]),
+                                     static_cast<float>(gyro_body[2]),
+                                     static_cast<float>(accel_body[0]),
+                                     static_cast<float>(accel_body[1]),
+                                     static_cast<float>(accel_body[2]));
             std::tie(data.roll, data.pitch, data.yaw) = IMU_QuaternionEKF_Data();
         }
+
         if(ins_flag == 0) {
             if(count) {
                 gyro_correct[0] += data.raw.gyro[0];

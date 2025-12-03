@@ -19,7 +19,7 @@
 #include <functional>
 
 // 根据总线负载选择
-#define MSG_CAN_LIMIT_PER_MILLISECOND 8
+#define MSG_CAN_LIMIT_PER_MILLISECOND 20
 
 /*!
  * 通过 Vofa+ 的 Justfloat 协议发送调试数据（所有数据统一转换为 float）

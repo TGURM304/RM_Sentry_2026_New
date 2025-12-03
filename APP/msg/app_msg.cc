@@ -45,8 +45,10 @@ void app_msg_can_send(bsp_can_e e, uint32_t id, uint8_t *s) {
 std::function<void(uint8_t*, uint16_t)> can_recv_callback = nullptr;
 uint8_t can_recv_buf[512], can_recv_sz = 0, can_recv_tot_sz = 0;
 
+uint32_t ts;
+
 void app_msg_can_recv(bsp_can_msg_t *msg) {
-    if(can_recv_sz) {
+    if(can_recv_sz and bsp_time_get_ms() - ts < 1000) {
         auto len = std::min(can_recv_tot_sz - can_recv_sz, 8);
         std::copy_n(msg->data, len, can_recv_buf + can_recv_sz);
         can_recv_sz += len;
@@ -57,6 +59,7 @@ void app_msg_can_recv(bsp_can_msg_t *msg) {
         std::copy_n(msg->data, len, can_recv_buf + can_recv_sz);
         can_recv_sz = std::min(can_recv_tot_sz, static_cast <uint8_t> (8));
     }
+    ts = bsp_time_get_ms();
     if(can_recv_sz and can_recv_sz == can_recv_tot_sz) {
         auto crc8 = CRC8::calc(can_recv_buf, can_recv_tot_sz - 1);
         if(crc8 == can_recv_buf[can_recv_tot_sz - 1]) {
