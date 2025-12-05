@@ -246,7 +246,7 @@ void app_gimbal_task(void *args) {
                     right_shoot_speed = 0;
                 }else if(rc->s_l == 1) {
                     //射击
-                    trigger_speed = -4500;
+                    trigger_speed = -2250;
                     left_shoot_speed = 7500;
                     right_shoot_speed = -7500;
                 }else if(rc->s_l == -1) {
@@ -296,7 +296,7 @@ void app_gimbal_task(void *args) {
 
 
         //大yaw状态量设置
-        s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 700, 8192));//小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
+        s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 3423, 8192));//小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
         b_yaw_real_speed = static_cast<float>(b_yaw.feedback_.vel) - B_YAW_ZERO_SPEED;//正对应往右转（顺时针
         //大yaw控制量设置
         b_yaw_target = 0;
