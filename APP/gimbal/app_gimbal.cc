@@ -298,6 +298,17 @@ void app_gimbal_task(void *args) {
             }else if(rc->s_r == 1) {
                 //小电脑控制区
                 bool control_by_pc = true;//占位符，此处填写哨兵控制代码
+                //云台控制
+                pit_target -= 0;
+                s_yaw_target -= 0;
+                //底盘
+                chassis_vx = 0;
+                chassis_vy = 0;
+                chassis_rotate = 0;
+                //拨弹盘控制
+                trigger_speed = 0;
+                left_shoot_speed = 0;
+                right_shoot_speed = 0;
             }
         }else {
             //安全控制器离线:失能,Yyp位置不控制(维持原位)，xy速度和shooter速度置为0,
