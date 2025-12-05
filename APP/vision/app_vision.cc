@@ -22,7 +22,7 @@ void uart_rx_callback(bsp_uart_e e, uint8_t *s, uint16_t l) {
 }
 
 void vision::init() {
-    bsp_uart_init(E_UART_VISION, &huart10);
+    bsp_uart_init(E_UART_VISION, &huart1);
     bsp_uart_set_callback(E_UART_VISION, uart_rx_callback);
 }
 
@@ -32,22 +32,30 @@ RecvPacket *vision::recv() {
 
 static auto ins = app_ins_data();
 
-void vision::send(uint8_t detect_color, bool reset_tracker) {
-    SendPacket pkg = {
-        // .detect_color = detect_color,
-        // .reset_tracker = reset_tracker,
-        // .reserved = 0,
-        // /* 世界坐标系下云台姿态  */
-        // .roll = static_cast <float> (ins->roll / 180 * M_PI),
-        // .pitch = static_cast <float> (ins->pitch / 180 * M_PI),
-        // .yaw = static_cast <float> (ins->yaw / 180 * M_PI),
-        // /* 当前云台瞄准的位置，用于发布可视化 Marker */
-        // .aim_x = 0,
-        // .aim_y = 0,
-        // .aim_z = 0,
-        // .checksum = 0
-    };
+void vision::send(float roll, float yaw, float yaw_vel, float pitch, float pitch_vel, float bullet_speed, uint16_t bullet_count) {
+    float q[4];
+    SendPacket pkg = {};
 
+    // 四元数计算
+    float half_roll  = roll  * 0.5f;
+    float half_pitch = pitch * 0.5f;
+    float half_yaw   = yaw   * 0.5f;
+
+    float cr = cosf(half_roll);
+    float sr = sinf(half_roll);
+    float cp = cosf(half_pitch);
+    float sp = sinf(half_pitch);
+    float cy = cosf(half_yaw);
+    float sy = sinf(half_yaw);
+
+    q[0] = cr * cp * cy + sr * sp * sy;  // w
+    q[1] = sr * cp * cy - cr * sp * sy;  // x
+    q[2] = cr * sp * cy + sr * cp * sy;  // y
+    q[3] = cr * cp * sy - sr * sp * cy;  // z
+
+    pkg.mode = 1;
+    memcpy(pkg.q, q, sizeof(float) * 4);
+    pkg.yaw = q[1];
     // TODO: CRC 未测试
     CRC16::append(pkg);
     bsp_uart_send(E_UART_VISION, reinterpret_cast <uint8_t *> (&pkg), sizeof pkg);
