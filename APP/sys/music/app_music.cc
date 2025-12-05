@@ -48,6 +48,15 @@ void app_sys_music_play(app_sys_music_e e) {
     case E_MUSIC_YOU:
         SET(app_music_notes_you);
         break;
+    case E_MUSIC_MODE1:
+        SET(app_music_notes_switch_mode1);
+        break;
+    case E_MUSIC_MODE2:
+        SET(app_music_notes_switch_mode2);
+        break;
+    case E_MUSIC_MODE3:
+        SET(app_music_notes_switch_mode3);
+        break;
     default:
         return;
     }

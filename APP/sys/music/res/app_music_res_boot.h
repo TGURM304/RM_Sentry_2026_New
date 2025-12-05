@@ -104,3 +104,23 @@ inline app_music_note_t app_music_notes_boot[] = {
 
 
 };
+
+
+inline app_music_note_t app_music_notes_switch_mode1[] = {
+    {B3, 0.5f, HalfBeat},      // 330 Hz，轻一点的“滴”
+    {0, 0, HalfBeat / 2},       // 间隔 50 ms
+    {B3, 0.5f, HalfBeat},      // 330 Hz，轻一点的“滴”
+};
+
+inline app_music_note_t app_music_notes_switch_mode2[] = {
+    {C3, 0.5f, HalfBeat},      // 659 Hz，明显更亮
+    {0, 0, HalfBeat / 2},       // 间隔 50 ms
+    {C3, 0.5f, HalfBeat},      // 659 Hz，明显更亮
+
+};
+
+inline app_music_note_t app_music_notes_switch_mode3[] = {
+    {D6, 0.5f, HalfBeat},      // 1760 Hz，更高“滴”
+    {0, 0, HalfBeat / 2},       // 间隔 50 ms
+    {D6, 0.5f, HalfBeat},      // 1760 Hz，更高“滴”
+};

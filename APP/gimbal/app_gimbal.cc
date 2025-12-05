@@ -25,6 +25,8 @@
 #include "app_vision.h"
 #include "ctrl_motor_base_pid.h"
 #include "app_msg_def.h"
+#include "bsp_buzzer.h"
+#include "app_music.h"
 
 #ifdef COMPILE_GIMBAL
 
@@ -207,6 +209,7 @@ void app_gimbal_task(void *args) {
     b_yaw.enable();
 
     int pc_send = 0;
+    int8_t last_s_r = 0x7f;
 
     while(true) {
         // 上位机通信，10ms一次
@@ -231,14 +234,40 @@ void app_gimbal_task(void *args) {
 
         //控制逻辑区，遥控器作为安全控制器和控制源选择器
         if(bsp_time_get_ms() - rc->timestamp <= 50) {
+            //切换模式提示音
+            // 1\. 检测模式切换（只要 s_r 变化就触发一次）
+            if (rc->s_r != last_s_r) {
+                last_s_r = rc->s_r;
+
+                // 2\. 根据新模式播放不同提示音
+                switch (rc->s_r) {
+                case -1:
+                    // 失能/备用模式提示音
+                        app_sys_music_play(E_MUSIC_MODE1);
+                    break;
+                case 0:
+                    // 遥控器控制模式提示音
+                        app_sys_music_play(E_MUSIC_MODE2);
+                    break;
+                case 1:
+                    // 小电脑控制模式提示音
+                        app_sys_music_play(E_MUSIC_MODE3);
+                    break;
+                default:
+                    break;
+                }
+            }
+
+            //选择控制源
             if(rc->s_r == -1) {
-                //备用,目前当作失能模式,情况同控制器离线
+                //备用,目前当作失能模式,情况同控制器离线:Yyp位置不控制(维持原位)，xy速度和shooter速度置为0,
                 trigger_speed = 0;
                 left_shoot_speed = 0;
                 right_shoot_speed = 0;
                 chassis_vx = 0;
                 chassis_vy = 0;
                 chassis_rotate = 0;
+
             }else if(rc->s_r == 0) {
                 //遥控器控制区
                 //云台控制
@@ -265,6 +294,7 @@ void app_gimbal_task(void *args) {
                     left_shoot_speed = -7500;
                     right_shoot_speed = 7500;
                 }
+
             }else if(rc->s_r == 1) {
                 //小电脑控制区
                 bool control_by_pc = true;//占位符，此处填写哨兵控制代码
@@ -278,6 +308,7 @@ void app_gimbal_task(void *args) {
             chassis_vy = 0;
             chassis_rotate = 0;
         }
+
 
         //电机控制区，分为pit轴，小yaw轴，大yaw轴控制、VxVy控制发送、摩擦轮和拨弹盘控制
         //pit轴控制量设置

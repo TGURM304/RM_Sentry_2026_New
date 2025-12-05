@@ -6,7 +6,10 @@
 
 enum app_sys_music_e {
     E_MUSIC_BOOT,
-    E_MUSIC_YOU
+    E_MUSIC_YOU,
+    E_MUSIC_MODE1,
+    E_MUSIC_MODE2,
+    E_MUSIC_MODE3
 };
 
 void app_sys_music_play(app_sys_music_e e);
