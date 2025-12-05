@@ -4,27 +4,24 @@
 
 #include "app_gimbal.h"
 
-#include "app_sys.h"
-#include "sys_task.h"
-#include "alg_filter.h"
-#include "app_sys.h"
-#include "sys_task.h"
-#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
+#include "alg_filter.h"
+#include "sys_task.h"
+#include "bsp_can.h"
+#include "bsp_rc.h"
+#include "bsp_time.h"
+#include "app_sys.h"
 #include "app_ins.h"
 #include "app_motor.h"
 #include "app_msg.h"
 #include "app_referee.h"
-#include "app_sys.h"
-#include "bsp_can.h"
-#include "bsp_rc.h"
-#include "bsp_time.h"
+
 #include "ctrl_pid.h"
 #include "dev_motor_dji.h"
 #include "dev_motor_dm.h"
-#include "sys_task.h"
 #include "app_vision.h"
 #include "ctrl_motor_base_pid.h"
 #include "app_msg_def.h"
@@ -177,6 +174,8 @@ float chassis_rotate;
 const auto ins = app_ins_data();
 const auto rc = bsp_rc_data();
 
+vision::RecvPacket* vd = vision::recv();
+
 //双板通信
 //收
 app_msg_can_receiver <app_msg_chassis_to_gimbal> chassis(E_CAN3, 0x044);
@@ -207,17 +206,28 @@ void app_gimbal_task(void *args) {
     OS::Task::SleepMilliseconds(100);
     b_yaw.enable();
 
+    int pc_send = 0;
 
     while(true) {
-
+        // 上位机通信，10ms一次
+        if(++pc_send == 10) {
+            pc_send = 0;
+            uint16_t bullet_count = 0;
+            float bullet_speed = 20;
+            float roll = ins->roll / 180 * M_PI;
+            float pitch = ins->pitch / 180 * M_PI;
+            float pitch_vel = ins->raw.gyro[0];
+            float yaw = ins->yaw / 180 * M_PI;
+            float yaw_vel = ins->raw.gyro[2];
+            vision::send(roll, yaw, yaw_vel, pitch, pitch_vel, bullet_speed, bullet_count);
+            // app_msg_vofa_send(E_UART_VISION, roll ,yaw, yaw_vel, pitch, pitch_vel, bullet_speed, bullet_count);
+        }
 
         //双板通信
         if(++ send_count == 10) {
             send_count = 0;
             send_msg_to_chassis();
         }
-
-
 
         //控制逻辑区，遥控器作为安全控制器和控制源选择器
         if(bsp_time_get_ms() - rc->timestamp <= 50) {
@@ -269,8 +279,6 @@ void app_gimbal_task(void *args) {
             chassis_rotate = 0;
         }
 
-
-
         //电机控制区，分为pit轴，小yaw轴，大yaw轴控制、VxVy控制发送、摩擦轮和拨弹盘控制
         //pit轴控制量设置
         if (pit_target < -5) pit_target = -5;//pitch限位
@@ -282,7 +290,6 @@ void app_gimbal_task(void *args) {
         pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
         pit.update((pit_output));
 
-
         //小yaw轴状态量设置
         yaw_unwrapped = unwrap_yaw_deg(ins->yaw);
         //小yaw轴控制量设置
@@ -292,8 +299,6 @@ void app_gimbal_task(void *args) {
         s_yaw_output = s_yaw_angle.update((s_yaw_current), (s_yaw_output));
         s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output));
         s_yaw.update((s_yaw_output));
-
-
 
         //大yaw状态量设置
         s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 3423, 8192));//小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
@@ -368,7 +373,7 @@ void app_gimbal_init() {
     s_yaw.init();
     b_yaw.init();
     pit.init();
-
+    vision::init();
 
     m_trigger.add_controller(std::make_unique <Controller::MotorBasePID> (
         Controller::MotorBasePID::PID_SPEED,
