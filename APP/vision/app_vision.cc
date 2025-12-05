@@ -54,8 +54,14 @@ void vision::send(float roll, float yaw, float yaw_vel, float pitch, float pitch
     q[3] = cr * cp * sy - sr * sp * cy;  // z
 
     pkg.mode = 1;
-    memcpy(pkg.q, q, sizeof(float) * 4);
-    pkg.yaw = q[1];
+    for (size_t i = 0; i < 4; i++)
+        pkg.q[i] = q[i];
+    pkg.yaw = yaw;
+    pkg.yaw_vel = yaw_vel;
+    pkg.pitch = pitch;
+    pkg.pitch_vel = pitch_vel;
+    pkg.bullet_speed = bullet_speed;
+    pkg.bullet_count = bullet_count;
     // TODO: CRC 未测试
     CRC16::append(pkg);
     bsp_uart_send(E_UART_VISION, reinterpret_cast <uint8_t *> (&pkg), sizeof pkg);
