@@ -34,18 +34,18 @@ static auto ins = app_ins_data();
 
 void vision::send(uint8_t detect_color, bool reset_tracker) {
     SendPacket pkg = {
-        .detect_color = detect_color,
-        .reset_tracker = reset_tracker,
-        .reserved = 0,
-        /* 世界坐标系下云台姿态  */
-        .roll = static_cast <float> (ins->roll / 180 * M_PI),
-        .pitch = static_cast <float> (ins->pitch / 180 * M_PI),
-        .yaw = static_cast <float> (ins->yaw / 180 * M_PI),
-        /* 当前云台瞄准的位置，用于发布可视化 Marker */
-        .aim_x = 0,
-        .aim_y = 0,
-        .aim_z = 0,
-        .checksum = 0
+        // .detect_color = detect_color,
+        // .reset_tracker = reset_tracker,
+        // .reserved = 0,
+        // /* 世界坐标系下云台姿态  */
+        // .roll = static_cast <float> (ins->roll / 180 * M_PI),
+        // .pitch = static_cast <float> (ins->pitch / 180 * M_PI),
+        // .yaw = static_cast <float> (ins->yaw / 180 * M_PI),
+        // /* 当前云台瞄准的位置，用于发布可视化 Marker */
+        // .aim_x = 0,
+        // .aim_y = 0,
+        // .aim_z = 0,
+        // .checksum = 0
     };
 
     // TODO: CRC 未测试
