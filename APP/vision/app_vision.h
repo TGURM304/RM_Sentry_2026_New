@@ -19,6 +19,7 @@ namespace vision {
         uint16_t bullet_count;  // 累计发弹数
         uint16_t crc16;
     } __attribute__((packed));
+    static_assert(sizeof(SendPacket) <= 64);
 
     struct RecvPacket {
         uint8_t head[2] = {'T', 'G'};
@@ -30,8 +31,8 @@ namespace vision {
         float pitch_vel;        // 目标俯仰角速度
         float pitch_acc;        // 目标俯仰角加速度
         uint16_t crc16;
-        uint16_t checksum = 0;
     } __attribute__((packed));
+    static_assert(sizeof(RecvPacket) <= 64);
 
     void init();
     RecvPacket *recv();
