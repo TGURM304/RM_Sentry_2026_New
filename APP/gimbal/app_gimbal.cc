@@ -223,7 +223,6 @@ void app_gimbal_task(void *args) {
             float yaw = ins->yaw / 180 * M_PI;
             float yaw_vel = ins->raw.gyro[2];
             vision::send(roll, yaw, yaw_vel, pitch, pitch_vel, bullet_speed, bullet_count);
-            // app_msg_vofa_send(E_UART_VISION, roll ,yaw, yaw_vel, pitch, pitch_vel, bullet_speed, bullet_count);
         }
 
         //双板通信
@@ -386,13 +385,13 @@ void app_gimbal_task(void *args) {
             // s_yaw_current,
             // s_yaw_output
 
-            s_yaw_enc_deg,
-            b_yaw_real_speed,
-            b_yaw_output,
-            static_cast <float> (rc->rc_r[0]),
-            ins->yaw,
-            s_yaw.feedback_.angle,
-            yaw_unwrapped
+            // s_yaw_enc_deg,
+            // b_yaw_real_speed,
+            // b_yaw_output,
+            // static_cast <float> (rc->rc_r[0]),
+            // ins->yaw,
+            // s_yaw.feedback_.angle,
+            // yaw_unwrapped,
 
             // m_trigger.device()->angle,
             // m_left_shoot.device()->speed,
@@ -405,6 +404,10 @@ void app_gimbal_task(void *args) {
             // static_cast<float>(rc->reserved),
             // chassis.timestamp,
             // b_yaw.feedback_.pos
+            vd->mode,
+            vd->pitch,
+            vd->yaw,
+            vd->crc16
         );
 
         OS::Task::SleepMilliseconds(1);
