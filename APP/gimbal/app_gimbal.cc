@@ -296,17 +296,28 @@ void app_gimbal_task(void *args) {
 
             }else if(rc->s_r == 1) {
                 //小电脑控制区
-                //云台控制
-                pit_target = vd->pitch * 180.0 / M_PI;
-                s_yaw_target = vd->yaw * 180.0 / M_PI;
-                //底盘
-                chassis_vx = 0;
-                chassis_vy = 0;
-                chassis_rotate = 0;
-                //拨弹盘控制
-                trigger_speed = 0;
-                left_shoot_speed = 0;
-                right_shoot_speed = 0;
+                //小电脑数据离线检测
+                if(bsp_time_get_ms() - vision::last_update_time() <= 100) {
+                    //确认瞄准后再移动云台
+                    if(vd->mode == 1 or vd->mode == 2) {
+                        //云台控制
+                        pit_target = vd->pitch * 180.0 / M_PI;
+                        s_yaw_target = vd->yaw * 180.0 / M_PI;
+                        //确认射击指令后再射击
+                        if(vd->mode == 2) {
+                            //拨弹盘控制
+                            trigger_speed = 0;
+                            left_shoot_speed = 0;
+                            right_shoot_speed = 0;
+                        }
+                    }
+                    //底盘
+                    chassis_vx = 0;
+                    chassis_vy = 0;
+                    chassis_rotate = 0;
+
+                }
+
             }
         }else {
             //安全控制器离线:失能,Yyp位置不控制(维持原位)，xy速度和shooter速度置为0,
@@ -407,7 +418,9 @@ void app_gimbal_task(void *args) {
             vd->pitch*180/M_PI,
             vd->yaw,
             vd->crc16,
-            ins->roll
+            ins->roll,
+            vision::last_update_time(),
+            bsp_time_get_ms()
         );
 
         OS::Task::SleepMilliseconds(1);

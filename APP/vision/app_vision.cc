@@ -11,14 +11,19 @@
 #include "bsp_uart.h"
 #include "alg_crc.h"
 #include "bsp_def.h"
+#include "bsp_time.h"
 
 using namespace vision;
 
 static RecvPacket rx_packet;
 
+// 新增：最近一次收到视觉数据的本地时间戳（ms）
+static uint32_t last_update_time_ms = 0;
+
 void uart_rx_callback(bsp_uart_e e, uint8_t *s, uint16_t l) {
     if(l < sizeof rx_packet) return;
     std::copy_n(s, sizeof rx_packet, reinterpret_cast <uint8_t *> (&rx_packet));
+    last_update_time_ms = bsp_time_get_ms();
 }
 
 void vision::init() {
@@ -28,6 +33,10 @@ void vision::init() {
 
 RecvPacket *vision::recv() {
     return &rx_packet;
+}
+
+uint32_t vision::last_update_time() {
+    return last_update_time_ms;
 }
 
 static auto ins = app_ins_data();

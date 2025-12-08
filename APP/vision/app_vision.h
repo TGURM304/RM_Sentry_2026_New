@@ -37,4 +37,5 @@ namespace vision {
     void init();
     RecvPacket *recv();
     void send(float roll, float yaw, float yaw_vel, float pitch, float pitch_vel, float bullet_speed, uint16_t bullet_count);
+    uint32_t last_update_time();
 }
