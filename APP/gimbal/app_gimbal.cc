@@ -204,21 +204,21 @@ void app_gimbal_task(void *args) {
     bsp_uart_set_callback(E_UART_DEBUG, set_target);
     chassis.init();
 
-    b_yaw.reset();
-    OS::Task::SleepMilliseconds(100);
-    b_yaw.enable();
+    // b_yaw.reset();
+    // OS::Task::SleepMilliseconds(100);
+    // b_yaw.enable();
 
     int pc_send = 0;
     int8_t last_s_r = 0x7f;
 
     while(true) {
         // 上位机通信，10ms一次
-        if(++pc_send == 10) {
+        if(++pc_send == 2) {
             pc_send = 0;
             uint16_t bullet_count = 0;
             float bullet_speed = 20;
-            float roll = ins->roll / 180 * M_PI;
-            float pitch = ins->pitch / 180 * M_PI;
+            float roll = ins->pitch / 180 * M_PI;//注意：ins->roll实际上是ins->pitch,反之亦反
+            float pitch = ins->roll / 180 * M_PI;
             float pitch_vel = ins->raw.gyro[0];
             float yaw = ins->yaw / 180 * M_PI;
             float yaw_vel = ins->raw.gyro[2];
@@ -296,10 +296,9 @@ void app_gimbal_task(void *args) {
 
             }else if(rc->s_r == 1) {
                 //小电脑控制区
-                bool control_by_pc = true;//占位符，此处填写哨兵控制代码
                 //云台控制
-                pit_target -= 0;
-                s_yaw_target -= 0;
+                pit_target = vd->pitch * 180.0 / M_PI;
+                s_yaw_target = vd->yaw * 180.0 / M_PI;
                 //底盘
                 chassis_vx = 0;
                 chassis_vy = 0;
@@ -352,11 +351,11 @@ void app_gimbal_task(void *args) {
         b_yaw_output = b_yaw_angle.update((-b_yaw_current), (b_yaw_target));
         b_yaw_output = b_yaw_speed.update((b_yaw_real_speed), (b_yaw_output));
         //重新使能并控制
-        if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
-            b_yaw.reset();
-            b_yaw.enable();
-        }
-        b_yaw.control(0,0,0,0,(b_yaw_output));//控制，正对应顺时针转
+        // if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
+        //     b_yaw.reset();
+        //     b_yaw.enable();
+        // }
+        // b_yaw.control(0,0,0,0,(b_yaw_output));//控制，正对应顺时针转
         // b_yaw.control(0,0,0,0,0);//测试，发空包,为了得到反馈数据
 
 
@@ -405,9 +404,10 @@ void app_gimbal_task(void *args) {
             // chassis.timestamp,
             // b_yaw.feedback_.pos
             vd->mode,
-            vd->pitch,
+            vd->pitch*180/M_PI,
             vd->yaw,
-            vd->crc16
+            vd->crc16,
+            ins->roll
         );
 
         OS::Task::SleepMilliseconds(1);
@@ -416,7 +416,7 @@ void app_gimbal_task(void *args) {
 
 void app_gimbal_init() {
     s_yaw.init();
-    b_yaw.init();
+    // b_yaw.init();
     pit.init();
     vision::init();
 
