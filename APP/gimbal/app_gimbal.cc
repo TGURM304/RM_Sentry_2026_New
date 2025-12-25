@@ -204,9 +204,9 @@ void app_gimbal_task(void *args) {
     bsp_uart_set_callback(E_UART_DEBUG, set_target);
     chassis.init();
 
-    // b_yaw.reset();
-    // OS::Task::SleepMilliseconds(100);
-    // b_yaw.enable();
+    b_yaw.reset();
+    OS::Task::SleepMilliseconds(100);
+    b_yaw.enable();
 
     int pc_send = 0;
     int8_t last_s_r = 0x7f;
@@ -241,7 +241,7 @@ void app_gimbal_task(void *args) {
                 // 2\. 根据新模式播放不同提示音
                 switch (rc->s_r) {
                 case -1:
-                    // 失能/备用模式提示音
+                    // 失能/备用模式提示音 低音低频率
                         app_sys_music_play(E_MUSIC_MODE1);
                     break;
                 case 0:
@@ -249,7 +249,7 @@ void app_gimbal_task(void *args) {
                         app_sys_music_play(E_MUSIC_MODE2);
                     break;
                 case 1:
-                    // 小电脑控制模式提示音
+                    // 小电脑控制模式提示音 高音高频率
                         app_sys_music_play(E_MUSIC_MODE3);
                     break;
                 default:
@@ -283,15 +283,15 @@ void app_gimbal_task(void *args) {
                     left_shoot_speed = 0;
                     right_shoot_speed = 0;
                 }else if(rc->s_l == 1) {
-                    //射击
-                    trigger_speed = -2250;
+                    //低速射击
+                    trigger_speed = -1500;
                     left_shoot_speed = 7500;
                     right_shoot_speed = -7500;
                 }else if(rc->s_l == -1) {
-                    //退弹(因为拨弹盘有机械限位，所以只有摩擦轮反转
-                    trigger_speed = 0;
-                    left_shoot_speed = -7500;
-                    right_shoot_speed = 7500;
+                    //高速射击
+                    trigger_speed = -4500;
+                    left_shoot_speed = 7500;
+                    right_shoot_speed = -7500;
                 }
 
             }else if(rc->s_r == 1) {
@@ -304,18 +304,35 @@ void app_gimbal_task(void *args) {
                         pit_target = vd->pitch * 180.0 / M_PI;
                         s_yaw_target = vd->yaw * 180.0 / M_PI;
                         //确认射击指令后再射击
-                        if(vd->mode == 2) {
-                            //拨弹盘控制
+                        if(vd->mode == 2 and rc->s_l == 1) {
+                            //自瞄允许发弹且遥控器允许发弹时控制发弹
+                            trigger_speed = -1000;
+                            left_shoot_speed = 7500;
+                            right_shoot_speed = -7500;
+                        }else {
                             trigger_speed = 0;
                             left_shoot_speed = 0;
                             right_shoot_speed = 0;
                         }
+                    }else {
+                        //云台传自瞄状态0，此时云台Yyp不控制，发射机构速度置为0
+                        trigger_speed = 0;
+                        left_shoot_speed = 0;
+                        right_shoot_speed = 0;
                     }
-                    //底盘
+                    //底盘控制部分，目前没有接口，速度置为0
                     chassis_vx = 0;
                     chassis_vy = 0;
                     chassis_rotate = 0;
 
+                }else {
+                    //小电脑通信离线，云台Yyp不控制，底盘速度和发射机构速度置为0
+                    chassis_vx = 0;
+                    chassis_vy = 0;
+                    chassis_rotate = 0;
+                    trigger_speed = 0;
+                    left_shoot_speed = 0;
+                    right_shoot_speed = 0;
                 }
 
             }
@@ -362,11 +379,11 @@ void app_gimbal_task(void *args) {
         b_yaw_output = b_yaw_angle.update((-b_yaw_current), (b_yaw_target));
         b_yaw_output = b_yaw_speed.update((b_yaw_real_speed), (b_yaw_output));
         //重新使能并控制
-        // if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
-        //     b_yaw.reset();
-        //     b_yaw.enable();
-        // }
-        // b_yaw.control(0,0,0,0,(b_yaw_output));//控制，正对应顺时针转
+        if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
+            b_yaw.reset();
+            b_yaw.enable();
+        }
+        b_yaw.control(0,0,0,0,(b_yaw_output));//控制，正对应顺时针转
         // b_yaw.control(0,0,0,0,0);//测试，发空包,为了得到反馈数据
 
 
@@ -403,9 +420,9 @@ void app_gimbal_task(void *args) {
             // s_yaw.feedback_.angle,
             // yaw_unwrapped,
 
-            // m_trigger.device()->angle,
-            // m_left_shoot.device()->speed,
-            // m_right_shoot.device()->speed
+            m_trigger.device()->angle,
+            m_left_shoot.device()->speed,
+            m_right_shoot.device()->speed
 
             // chassis()->robot_id,
             // chassis()->robot_level
@@ -414,13 +431,14 @@ void app_gimbal_task(void *args) {
             // static_cast<float>(rc->reserved),
             // chassis.timestamp,
             // b_yaw.feedback_.pos
-            vd->mode,
-            vd->pitch*180/M_PI,
-            vd->yaw,
-            vd->crc16,
-            ins->roll,
-            vision::last_update_time(),
-            bsp_time_get_ms()
+
+            // vd->mode,
+            // vd->pitch*180/M_PI,
+            // vd->yaw,
+            // vd->crc16,
+            // ins->roll,
+            // vision::last_update_time(),
+            // bsp_time_get_ms()
         );
 
         OS::Task::SleepMilliseconds(1);
@@ -429,7 +447,7 @@ void app_gimbal_task(void *args) {
 
 void app_gimbal_init() {
     s_yaw.init();
-    // b_yaw.init();
+    b_yaw.init();
     pit.init();
     vision::init();
 
