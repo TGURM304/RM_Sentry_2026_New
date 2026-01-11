@@ -220,7 +220,7 @@ void app_chassis_task(void *args) {
 
 	    auto theta = std::atan2(vy, vx), r = std::sqrt((vx * vx) + (vy * vy));
 	    // theta -= M_PI / 4096;//无解算git
-	    theta -= encoder_to_angle_360(gimbal()->b_yaw_cnt,3600) * M_PI / 180.0;//大yaw正方向解算
+	    theta -= encoder_to_angle_360(gimbal()->b_yaw_cnt,3450) * M_PI / 180.0;//大yaw正方向解算
 	    vx = r * std::cos(theta), vy = r * std::sin(theta);
 
 	    //防滑控制
