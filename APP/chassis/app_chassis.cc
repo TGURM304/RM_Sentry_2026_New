@@ -220,7 +220,8 @@ void app_chassis_task(void *args) {
 
 	    auto theta = std::atan2(vy, vx), r = std::sqrt((vx * vx) + (vy * vy));
 	    // theta -= M_PI / 4096;//无解算git
-	    theta -= encoder_to_angle_360(gimbal()->b_yaw_cnt,3450) * M_PI / 180.0;//大yaw正方向解算
+	    theta -= (gimbal()->b_yaw_pos + 1.92);
+	    //todo：加一个旋转速度的角度前馈,不然小陀螺平移会跑偏
 	    vx = r * std::cos(theta), vy = r * std::sin(theta);
 
 	    //防滑控制
@@ -263,11 +264,12 @@ void app_chassis_task(void *args) {
 	                                    // s_3.device()->angle,  //5119
 	                                    // s_4.device()->angle,  //5765
 	                                    gimbal()->ins_yaw,
-	                                    gimbal()->b_yaw_cnt,
-	                                    encoder_to_angle_360(gimbal()->b_yaw_cnt,4096),
+	                                    // gimbal()->b_yaw_cnt,
+	                                    // encoder_to_angle_360(gimbal()->b_yaw_cnt,4096),
 	                                    bsp_time_get_ms(),
 	                                    gimbal.timestamp,
-	                                    encoder_to_angle_360(gimbal()->b_yaw_cnt,3600) * M_PI / 180.0
+	                                    gimbal()->b_yaw_pos
+	                                    // encoder_to_angle_360(gimbal()->b_yaw_cnt,3600) * M_PI / 180.0
 	                                    // encoder_to_angle_360(gimbal()->b_yaw_cnt,5041)
 	                                    // gimbal()->vx,
 	                                    // gimbal()->vy,

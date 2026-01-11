@@ -45,7 +45,7 @@ PID pit_angle(16, 0, 0, 210, 0);
 
 DMMotor b_yaw("gimbal_yaw_big", DMMotor::J4310, (DMMotor::Param) {
     .slave_id = 0x06, .master_id = 0x05, .port = E_CAN3, .mode = DMMotor::MIT,
-    .p_max = 12.5, .v_max = 30, .t_max = 10, .kp_max = 500, .kd_max = 5
+    .p_max = 3.1415926535, .v_max = 30, .t_max = 10, .kp_max = 500, .kd_max = 5
 });
 PID b_yaw_speed(0.015, 0.0002, 0, 10, 6);
 PID b_yaw_angle(15, 0.008, 0, 720, 540);
@@ -188,7 +188,7 @@ void send_msg_to_chassis() {
         .vx = chassis_vx,
         .vy = chassis_vy,
         .rotate = chassis_rotate,
-        .b_yaw_cnt = b_yaw.feedback_.pos,
+        .b_yaw_pos = b_yaw.status.pos,
 
     };
     app_msg_can_send(E_CAN3, 0x036, pkg);
@@ -273,9 +273,9 @@ void app_gimbal_task(void *args) {
                 pit_target -= static_cast <float> (rc->rc_r[1]) * 0.0002f;
                 s_yaw_target -= static_cast <float> (rc->rc_r[0]) * 0.0006f;
                 //底盘控制
-                chassis_vx = static_cast<float>(3.0*rc->rc_l[0]);
-                chassis_vy = static_cast<float>(3.0*rc->rc_l[1]);
-                chassis_rotate = static_cast<float>(3.0*rc->reserved);
+                chassis_vx = static_cast<float>(8.0*rc->rc_l[0]);
+                chassis_vy = static_cast<float>(8.0*rc->rc_l[1]);
+                chassis_rotate = static_cast<float>(8.0*rc->reserved);
                 //射击控制
                 if(rc->s_l == 0) {
                     //不射击
@@ -412,17 +412,18 @@ void app_gimbal_task(void *args) {
             // s_yaw_current,
             // s_yaw_output
 
-            // s_yaw_enc_deg,
-            // b_yaw_real_speed,
-            // b_yaw_output,
-            // static_cast <float> (rc->rc_r[0]),
-            // ins->yaw,
-            // s_yaw.feedback_.angle,
-            // yaw_unwrapped,
+            s_yaw_enc_deg,
+            b_yaw_real_speed,
+            b_yaw_output,
+            static_cast <float> (rc->rc_r[0]),
+            ins->yaw,
+            s_yaw.feedback_.angle,
+            yaw_unwrapped,
+            b_yaw.feedback_.pos
 
-            m_trigger.device()->angle,
-            m_left_shoot.device()->speed,
-            m_right_shoot.device()->speed
+            // m_trigger.device()->angle,
+            // m_left_shoot.device()->speed,
+            // m_right_shoot.device()->speed
 
             // chassis()->robot_id,
             // chassis()->robot_level

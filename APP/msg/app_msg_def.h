@@ -10,7 +10,7 @@ struct app_msg_gimbal_to_chassis {
     //底盘运动数据
     float ins_yaw;
     float vx, vy, rotate;
-    int b_yaw_cnt;
+    float b_yaw_pos;
 
 } __attribute__((packed));
 
