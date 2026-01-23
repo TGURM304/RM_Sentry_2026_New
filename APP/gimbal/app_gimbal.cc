@@ -47,8 +47,9 @@ DMMotor b_yaw("gimbal_yaw_big", DMMotor::J4310, (DMMotor::Param) {
     .slave_id = 0x06, .master_id = 0x05, .port = E_CAN3, .mode = DMMotor::MIT,
     .p_max = 3.1415926535, .v_max = 30, .t_max = 10, .kp_max = 500, .kd_max = 5
 });
-PID b_yaw_speed(0.015, 0.0002, 0, 10, 6);
-PID b_yaw_angle(15, 0.008, 0, 720, 540);
+PID b_yaw_speed(1.0, 0.00040, 0, 9, 4);
+PID b_yaw_angle(0.21, 0.0010, 0, 48, 36);
+//todo:调angle环的ki
 
 MotorController m_trigger(std::make_unique <DJIMotor>(
     "trigger",
@@ -276,6 +277,7 @@ void app_gimbal_task(void *args) {
                 chassis_vx = static_cast<float>(8.0*rc->rc_l[0]);
                 chassis_vy = static_cast<float>(8.0*rc->rc_l[1]);
                 chassis_rotate = static_cast<float>(8.0*rc->reserved);
+                // chassis_rotate = 0;
                 //射击控制
                 if(rc->s_l == 0) {
                     //不射击
@@ -301,10 +303,12 @@ void app_gimbal_task(void *args) {
                     //确认瞄准后再移动云台
                     if(vd->mode == 1 or vd->mode == 2) {
                         //云台控制
-                        pit_target = vd->pitch * 180.0 / M_PI;
-                        s_yaw_target = vd->yaw * 180.0 / M_PI;
+                        pit_target = 4.0+ (vd->pitch * 180.0 / M_PI);
+                        s_yaw_target = -2.6+ (vd->yaw * 180.0 / M_PI);
                         //确认射击指令后再射击
-                        if(vd->mode == 2 and rc->s_l == 1) {
+                        //todo:加低通滤波
+                        // if(vd->mode == 2 and rc->s_l == 1) {
+                        if(rc->s_l == 1) {
                             //自瞄允许发弹且遥控器允许发弹时控制发弹
                             trigger_speed = -1000;
                             left_shoot_speed = 7500;
@@ -370,21 +374,26 @@ void app_gimbal_task(void *args) {
 
         //大yaw状态量设置
         s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 3423, 8192));//小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
-        b_yaw_real_speed = static_cast<float>(b_yaw.feedback_.vel) - B_YAW_ZERO_SPEED;//正对应往右转（顺时针
         //大yaw控制量设置
         b_yaw_target = 0;
         b_yaw_current = s_yaw_enc_deg;
         //大yaw轴控制
         b_yaw_output = b_yaw_target;
-        b_yaw_output = b_yaw_angle.update((-b_yaw_current), (b_yaw_target));
-        b_yaw_output = b_yaw_speed.update((b_yaw_real_speed), (b_yaw_output));
+        b_yaw_output = b_yaw_angle.update((-b_yaw_current), (b_yaw_output));
+        b_yaw_output = b_yaw_speed.update((b_yaw.status.vel), (b_yaw_output));
         //重新使能并控制
         if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
             b_yaw.reset();
             b_yaw.enable();
         }
-        b_yaw.control(0,0,0,0,(b_yaw_output));//控制，正对应顺时针转
-        // b_yaw.control(0,0,0,0,0);//测试，发空包,为了得到反馈数据
+        if(abs(b_yaw_current)<0.35) {
+            //含死区
+            b_yaw.control(0,0,0,0,0);
+        }else {
+            b_yaw.control(0,0,0,0,(b_yaw_output));//控制，正对应顺时针转
+        }
+        //测试，发空包,为了得到反馈数据
+        // b_yaw.control(0,0,0,0,0);
 
 
         //发射机构控制
@@ -412,14 +421,18 @@ void app_gimbal_task(void *args) {
             // s_yaw_current,
             // s_yaw_output
 
-            s_yaw_enc_deg,
-            b_yaw_real_speed,
-            b_yaw_output,
-            static_cast <float> (rc->rc_r[0]),
-            ins->yaw,
-            s_yaw.feedback_.angle,
-            yaw_unwrapped,
-            b_yaw.feedback_.pos
+            // s_yaw_enc_deg,
+            // b_yaw_real_speed,
+            b_yaw_target,
+            // b_yaw.status.vel,
+            b_yaw_current,
+            b_yaw_output
+            // static_cast <float> (rc->rc_r[0]),
+            // ins->yaw,
+            // s_yaw.feedback_.angle,
+            // yaw_unwrapped,
+            // b_yaw.feedback_.pos,
+
 
             // m_trigger.device()->angle,
             // m_left_shoot.device()->speed,
