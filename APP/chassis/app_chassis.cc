@@ -88,30 +88,43 @@ MotorController s_4(std::make_unique <DJIMotor> (
 struct SW {
     MotorController *servo = nullptr, *wheel = nullptr;
     bool reversed = false;
+    bool invert_wheel = false; // 仅用于指定某个轮子固定反向
     double vx_ = 0, vy_ = 0, angle_ = 0;
+
     void update(double vx, double vy) {
         vx *= -1;
         auto angle = std::atan2(vy, vx);
-        if(std::min(std::abs(angle - angle_), 2 * M_PI - std::abs(angle - angle_)) > M_PI / 2) {
+        if (std::min(std::abs(angle - angle_), 2 * M_PI - std::abs(angle - angle_)) > M_PI / 2) {
             reversed ^= 1;
         }
-        auto cur_angle = static_cast <float> (angle < 0 ? 2 * M_PI + angle : angle), cur_speed = static_cast <float> (std::sqrt(vx * vx + vy * vy));
-        cur_angle = static_cast <float> (cur_angle / M_PI * 180 + 270);
 
-        if(reversed) {
+        auto cur_angle = static_cast<float>(angle < 0 ? 2 * M_PI + angle : angle);
+        auto cur_speed = static_cast<float>(std::sqrt(vx * vx + vy * vy));
+        cur_angle = static_cast<float>(cur_angle / M_PI * 180 + 270);
+
+        if (reversed) {
             cur_angle += 180;
             cur_speed *= -1;
         }
 
-        while(cur_angle >= 360) cur_angle -= 360;
-        while(cur_angle < 0) cur_angle += 360;
+        if (invert_wheel) {
+            cur_speed *= -1;
+        }
 
-        servo->update(cur_angle), wheel->update(cur_speed);
-        vx_ = vx, vy_ = vy, angle_ = angle;
+        while (cur_angle >= 360) cur_angle -= 360;
+        while (cur_angle < 0) cur_angle += 360;
+
+        servo->update(cur_angle);
+        wheel->update(cur_speed);
+
+        vx_ = vx; vy_ = vy; angle_ = angle;
     }
 };
 
-SW sw_1 = { &s_1, &w_1 }, sw_2 = { &s_2, &w_2 }, sw_3 = { &s_3, &w_3 }, sw_4 = { &s_4, &w_4 };
+SW sw_1 = { &s_1, &w_1 };
+SW sw_2 = { &s_2, &w_2, false, true }; // 仅 w_2 速度取反
+SW sw_3 = { &s_3, &w_3 };
+SW sw_4 = { &s_4, &w_4 };
 
 float target = 0;
 bool dir = false;
