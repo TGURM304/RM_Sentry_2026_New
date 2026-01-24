@@ -382,7 +382,7 @@ void app_gimbal_task(void *args) {
             b_yaw.enable();
         }
         //含死区的控制：
-        if(abs(b_yaw_current)<0.00) {
+        if(abs(b_yaw_current)<0.15) {
             //此时进入死区,不更新pid，并且发空包.如果你设置小于0则不启用死区
             b_yaw.control(0,0,0,0,0);
         }else {
