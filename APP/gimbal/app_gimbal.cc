@@ -190,6 +190,7 @@ void send_msg_to_chassis() {
         .vy = chassis_vy,
         .rotate = chassis_rotate,
         .b_yaw_pos = b_yaw.status.pos,
+        .chassis_power_limit = 120.0f,
 
     };
     app_msg_can_send(E_CAN3, 0x036, pkg);
@@ -382,7 +383,7 @@ void app_gimbal_task(void *args) {
             b_yaw.enable();
         }
         //含死区的控制：
-        if(abs(b_yaw_current)<0.15) {
+        if(abs(b_yaw_current)<0.00) {
             //此时进入死区,不更新pid，并且发空包.如果你设置小于0则不启用死区
             b_yaw.control(0,0,0,0,0);
         }else {

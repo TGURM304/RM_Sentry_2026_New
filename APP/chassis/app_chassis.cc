@@ -20,6 +20,7 @@
 #include "sys_task.h"
 #include "bsp_rc.h"
 #include "app_msg_def.h"
+#include "power_manager.h"
 
 #ifdef COMPILE_CHASSIS
 
@@ -84,6 +85,19 @@ MotorController s_4(std::make_unique <DJIMotor> (
     DJIMotor::GM6020,
     (DJIMotor::Param) { 0x04, E_CAN2, DJIMotor::CURRENT }
 ));
+
+motor_power_init_t motor_3508_power_data(0.65213,(-0.15659),0.00041660,0.00235415,0.20022,1.08e-7,1000);
+motor_power_init_t GM6020_power_init_data(0.7507578,(-0.0759636),(-0.00153397),0.01225624,0.19101805,0.0000066450,1000);
+MotorPower m3508_1_power(motor_3508_power_data);
+MotorPower m3508_2_power(motor_3508_power_data);
+MotorPower m3508_3_power(motor_3508_power_data);
+MotorPower m3508_4_power(motor_3508_power_data);
+ChassisPowerManager chassis_w(&m3508_1_power, &m3508_2_power, &m3508_3_power, &m3508_4_power);
+MotorPower gm6020_1_power(GM6020_power_init_data);
+MotorPower gm6020_2_power(GM6020_power_init_data);
+MotorPower gm6020_3_power(GM6020_power_init_data);
+MotorPower gm6020_4_power(GM6020_power_init_data);
+ChassisPowerManager chassis_s(&gm6020_1_power, &gm6020_2_power, &gm6020_3_power, &gm6020_4_power);
 
 struct SW {
     MotorController *servo = nullptr, *wheel = nullptr;
@@ -232,7 +246,7 @@ void app_chassis_task(void *args) {
 
 
 	    auto theta = std::atan2(vy, vx), r = std::sqrt((vx * vx) + (vy * vy));
-	    // theta -= M_PI / 4096;//无解算git
+	    // theta -= M_PI / 4096;//无解算
 	    theta -= (gimbal()->b_yaw_pos + 1.92);
 	    //todo：加一个旋转速度的角度前馈,不然小陀螺平移会跑偏
 	    vx = r * std::cos(theta), vy = r * std::sin(theta);
@@ -267,7 +281,10 @@ void app_chassis_task(void *args) {
 	        motor_update(vx, vy, rotate);
 	    }
 
-
+	    // chassis_w.updateMotorError(0, );
+	    // chassis_w.updateMotorError(1, );
+	    // chassis_w.updateMotorError(2, );
+	    // chassis_w.updateMotorError(3, );
 
 
 
@@ -281,7 +298,8 @@ void app_chassis_task(void *args) {
 	                                    // encoder_to_angle_360(gimbal()->b_yaw_cnt,4096),
 	                                    bsp_time_get_ms(),
 	                                    gimbal.timestamp,
-	                                    gimbal()->b_yaw_pos
+	                                    gimbal()->b_yaw_pos,
+	                                    gimbal()->chassis_power_limit
 	                                    // encoder_to_angle_360(gimbal()->b_yaw_cnt,3600) * M_PI / 180.0
 	                                    // encoder_to_angle_360(gimbal()->b_yaw_cnt,5041)
 	                                    // gimbal()->vx,
