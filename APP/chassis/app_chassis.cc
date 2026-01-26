@@ -253,7 +253,7 @@ void app_chassis_task(void *args) {
 	    theta -= (gimbal()->b_yaw_pos + 1.92);//大yaw轴正方向解算
         //旋转速度的角度前馈,不然小陀螺平移会跑偏
 	    double translation = sqrt(vx*vx + vy*vy);
-	    rotate_theta_forwardfeed(&theta,rotate,translation,-0.000047);
+	    rotate_theta_forwardfeed(&theta,rotate,translation,gimbal()->k_rotate);
 	    vx = r * std::cos(theta), vy = r * std::sin(theta);
 
 

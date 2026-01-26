@@ -12,6 +12,7 @@ struct app_msg_gimbal_to_chassis {
     float vx, vy, rotate;
     float b_yaw_pos;
     float chassis_power_limit;
+    float k_rotate;
 
 } __attribute__((packed));
 

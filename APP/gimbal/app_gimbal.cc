@@ -191,6 +191,7 @@ void send_msg_to_chassis() {
         .rotate = chassis_rotate,
         .b_yaw_pos = b_yaw.status.pos,
         .chassis_power_limit = 120.0f,
+        .k_rotate = -0.000055,
 
     };
     app_msg_can_send(E_CAN3, 0x036, pkg);
