@@ -25,6 +25,8 @@ public:
 	void relax(bool force = true);
 	void activate(bool force = true);
 	void update(double target);
+	// 仅下发指定输出，不重新计算 PID / 控制链路（用于功率限制等二次修正）
+	void send_output(float out);
 	void add_controller(std::unique_ptr <Controller::Base> controller);
 	void add_controller(const std::function <float(const MotorController *)>& fn, std::unique_ptr <Controller::Base> controller);
 

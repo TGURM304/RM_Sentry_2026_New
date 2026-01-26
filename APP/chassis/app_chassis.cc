@@ -99,6 +99,8 @@ MotorPower gm6020_3_power(GM6020_power_init_data);
 MotorPower gm6020_4_power(GM6020_power_init_data);
 ChassisPowerManager chassis_s(&gm6020_1_power, &gm6020_2_power, &gm6020_3_power, &gm6020_4_power);
 
+std::vector<double>s_w_power_vector(2);
+
 struct SW {
     MotorController *servo = nullptr, *wheel = nullptr;
     bool reversed = false;
@@ -234,6 +236,7 @@ void app_chassis_task(void *args) {
 	    }
 
 
+	    //云台数据离线检测
 	    if (bsp_time_get_ms() - gimbal.timestamp<100)
 	    {
 	        vx = -gimbal()->vx * 1.0;
@@ -244,12 +247,15 @@ void app_chassis_task(void *args) {
 	    }
 
 
-
+	    //小陀螺正方向解算
 	    auto theta = std::atan2(vy, vx), r = std::sqrt((vx * vx) + (vy * vy));
 	    // theta -= M_PI / 4096;//无解算
-	    theta -= (gimbal()->b_yaw_pos + 1.92);
-	    //todo：加一个旋转速度的角度前馈,不然小陀螺平移会跑偏
+	    theta -= (gimbal()->b_yaw_pos + 1.92);//大yaw轴正方向解算
+        //旋转速度的角度前馈,不然小陀螺平移会跑偏
+	    double translation = sqrt(vx*vx + vy*vy);
+	    rotate_theta_forwardfeed(&theta,rotate,translation,-0.000047);
 	    vx = r * std::cos(theta), vy = r * std::sin(theta);
+
 
 	    //防滑控制
 	    // if(rotate == 0) rotate = eps;
@@ -267,7 +273,6 @@ void app_chassis_task(void *args) {
 	    //     zero_count = 0;
 	    //     motor_update(vx, vy, rotate);
 	    // }
-
 	    //正常控制
 	    if(vx == 0 and vy == 0 and rotate ==0) {
             //舵不更新，轮速为0
@@ -281,11 +286,38 @@ void app_chassis_task(void *args) {
 	        motor_update(vx, vy, rotate);
 	    }
 
-	    // chassis_w.updateMotorError(0, );
-	    // chassis_w.updateMotorError(1, );
-	    // chassis_w.updateMotorError(2, );
-	    // chassis_w.updateMotorError(3, );
 
+	    //功率分配与控制
+        //先分配舵和轮的功率
+	    s_w_power_vector = allocate_SW_power(gimbal()->chassis_power_limit,0.5,chassis_s.getTotalPredictNotLimitPower());
+	    //四个轮的功率分配
+	    chassis_w.updateMotorError(0,w_1.target() - w_1.speed );
+	    chassis_w.updateMotorError(1,w_2.target() - w_2.speed );
+	    chassis_w.updateMotorError(2,w_3.target() - w_3.speed );
+	    chassis_w.updateMotorError(3,w_4.target() - w_4.speed );
+	    chassis_w.allocatePower(s_w_power_vector[1]);
+	    m3508_1_power.limiter(&w_1.output,w_1.speed,m3508_1_power.power_limit);
+	    m3508_2_power.limiter(&w_2.output,w_2.speed,m3508_2_power.power_limit);
+	    m3508_3_power.limiter(&w_3.output,w_3.speed,m3508_3_power.power_limit);
+	    m3508_4_power.limiter(&w_4.output,w_4.speed,m3508_4_power.power_limit);
+	    w_1.send_output(w_1.output);
+	    w_2.send_output(w_2.output);
+	    w_3.send_output(w_3.output);
+	    w_4.send_output(w_4.output);
+        //四个舵的功率分配
+	    chassis_s.updateMotorError(0,s_1.target() - s_1.angle );
+	    chassis_s.updateMotorError(1,s_2.target() - s_2.angle );
+	    chassis_s.updateMotorError(2,s_3.target() - s_3.angle );
+	    chassis_s.updateMotorError(3,s_4.target() - s_4.angle );
+	    chassis_s.allocatePower(s_w_power_vector[0]);
+	    gm6020_1_power.limiter(&s_1.output,s_1.speed,gm6020_1_power.power_limit);
+	    gm6020_2_power.limiter(&s_2.output,s_2.speed,gm6020_2_power.power_limit);
+	    gm6020_3_power.limiter(&s_3.output,s_3.speed,gm6020_3_power.power_limit);
+	    gm6020_4_power.limiter(&s_4.output,s_4.speed,gm6020_4_power.power_limit);
+	    s_1.send_output(s_1.output);
+        s_2.send_output(s_2.output);
+	    s_3.send_output(s_3.output);
+	    s_4.send_output(s_4.output);
 
 
 	    app_msg_vofa_send(E_UART_DEBUG,
@@ -294,33 +326,9 @@ void app_chassis_task(void *args) {
 	                                    // s_3.device()->angle,  //5119
 	                                    // s_4.device()->angle,  //5765
 	                                    gimbal()->ins_yaw,
-	                                    // gimbal()->b_yaw_cnt,
-	                                    // encoder_to_angle_360(gimbal()->b_yaw_cnt,4096),
-	                                    bsp_time_get_ms(),
-	                                    gimbal.timestamp,
-	                                    gimbal()->b_yaw_pos,
-	                                    gimbal()->chassis_power_limit
-	                                    // encoder_to_angle_360(gimbal()->b_yaw_cnt,3600) * M_PI / 180.0
-	                                    // encoder_to_angle_360(gimbal()->b_yaw_cnt,5041)
-	                                    // gimbal()->vx,
-	                                    // gimbal()->vy,
-	                                    // gimbal()->rotate,
-	                                    // w_1.current,
-	                                    // s_1.current,
-	                                    // w_2.current,
-	                                    // s_2.current
-	                                    // send_count
-
-
-
-
-
-	                                    // w_2.device()->speed,
-	                                    // w_2.device()->current,
-	                                    // w_2.output,
-	                                    // w_2.target()
-                                        // rc->rc_l[0],
-                                        // rc->rc_l[1]
+	                                    chassis_s.getTotalPredictNotLimitPower(),
+	                                    chassis_s.getTotalPowerLimit(),
+	                                    chassis_s.getTotalPredictPower()
 	                                    );
 
 		OS::Task::SleepMilliseconds(1);

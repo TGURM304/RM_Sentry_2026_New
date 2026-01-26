@@ -39,7 +39,7 @@ public:
     explicit MotorPower(const motor_power_init_t &motor_power_init_data);
     [[nodiscard]] double getMotorRealCurrent(double current) const;
     double update(double current, double speed,E_Predict_Status_Type Predict_status = E_disabled_predict, E_CalMotorPower_Negative_Status_Type Negative_Status = E_disabled_negative);
-    double limiter(double *desired_current, double current_speed, double motor_power_limit);
+    double limiter(float *desired_current, double current_speed, double motor_power_limit);
 };
 
 class ChassisPowerManager {

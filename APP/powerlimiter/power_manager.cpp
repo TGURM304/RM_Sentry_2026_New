@@ -56,7 +56,7 @@ double MotorPower::update(double current ,double speed,const E_Predict_Status_Ty
 }
 
 //会直接改变最终发给电机的输出值，同时也会return一个衰减系数
-double MotorPower::limiter(double *desired_current,const double current_speed, const double motor_power_limit ) {
+double MotorPower::limiter(float *desired_current,const double current_speed, const double motor_power_limit ) {
 
     if (desired_current == nullptr) {
         return 0.0;
