@@ -146,6 +146,15 @@ double unwrap_yaw_deg(double yaw_now_deg)
 }
 double yaw_unwrapped = 0.0;
 
+
+static inline float wrap_to_minus180_180(float angle_deg)
+{
+    while (angle_deg > 180.0f)  angle_deg -= 360.0f;
+    while (angle_deg <= -180.0f) angle_deg += 360.0f;
+    return angle_deg;
+}
+float s_yaw_angle_err;
+
 //串口发变量
 float target = 0;
 void set_target(bsp_uart_e e, uint8_t *s, uint16_t l) {
@@ -371,7 +380,9 @@ void app_gimbal_task(void *args) {
         s_yaw_current = static_cast<float>(yaw_unwrapped);
         //小yaw轴控制
         s_yaw_output = s_yaw_target;
-        s_yaw_output = s_yaw_angle.update((s_yaw_current), (s_yaw_output));
+        s_yaw_angle_err = s_yaw_output - s_yaw_current;//规划最短路径
+        s_yaw_angle_err = wrap_to_minus180_180(s_yaw_angle_err);
+        s_yaw_output = s_yaw_angle.update((0.0), (s_yaw_angle_err));
         s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output));
         s_yaw.update((s_yaw_output));
         //大yaw状态量设置
@@ -422,16 +433,16 @@ void app_gimbal_task(void *args) {
             // ins->yaw,
             // ins->raw.gyro[2],
             // rc->rc_r[0],
-            // s_yaw_target,
-            // s_yaw_current,
-            // s_yaw_output
+            s_yaw_target,
+            s_yaw_current,
+            s_yaw_output
 
             // s_yaw_enc_deg,
             // b_yaw_real_speed,
-            b_yaw_target,
             // b_yaw.status.vel,
-            b_yaw_current,
-            b_yaw_output
+            // b_yaw_target,
+            // b_yaw_current,
+            // b_yaw_output
             // static_cast <float> (rc->rc_r[0]),
             // ins->yaw,
             // s_yaw.feedback_.angle,
