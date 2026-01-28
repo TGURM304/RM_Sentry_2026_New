@@ -185,13 +185,14 @@ app_msg_can_receiver <app_msg_chassis_to_gimbal> chassis(E_CAN3, 0x044);
 //发
 void send_msg_to_chassis() {
     app_msg_gimbal_to_chassis pkg = {
-        .ins_yaw = ins->yaw,
+        .s_yaw_pos_equally = s_yaw_enc_deg,
         .vx = chassis_vx,
         .vy = chassis_vy,
         .rotate = chassis_rotate,
         .b_yaw_pos = b_yaw.status.pos,
         .chassis_power_limit = 120.0f,
-        .k_rotate = -0.000055,
+        // .k_rotate = -0.000069,//中平移速度
+        .k_rotate = -0.000055,//高平移速度
 
     };
     app_msg_can_send(E_CAN3, 0x036, pkg);

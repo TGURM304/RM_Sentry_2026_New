@@ -32,7 +32,7 @@
 //     (s2)           |                     |  (s3)
 //                    |                     |
 //                    |                     |
-//                  分电板       中心        喵板
+//                  分电板       中心        喵板            ---->默认底盘陀螺仪正方向
 //                    |                     |
 //                    |                     |
 //                    |                     |
@@ -249,11 +249,13 @@ void app_chassis_task(void *args) {
 
 	    //小陀螺正方向解算
 	    auto theta = std::atan2(vy, vx), r = std::sqrt((vx * vx) + (vy * vy));
-	    // theta -= M_PI / 4096;//无解算
+	    // 以下均注释则为无解算
+	    // theta -= (ins->yaw * M_PI / 180 +0.00);//底盘陀螺仪正方向解算
 	    theta -= (gimbal()->b_yaw_pos + 1.92);//大yaw轴正方向解算
+	    // theta -= (gimbal()->b_yaw_pos + gimbal()->s_yaw_pos_equally * M_PI / 180 + 1.89);//小yaw正方向解算
         //旋转速度的角度前馈,不然小陀螺平移会跑偏
 	    double translation = sqrt(vx*vx + vy*vy);
-	    rotate_theta_forwardfeed(&theta,rotate,translation,gimbal()->k_rotate);
+	    rotate_theta_forwardfeed(&theta,rotate,translation,gimbal()->k_rotate); //这个补偿系数越小（负的越大），加以逆时针旋转速度和向前平移时越往右偏
 	    vx = r * std::cos(theta), vy = r * std::sin(theta);
 
 
@@ -325,7 +327,11 @@ void app_chassis_task(void *args) {
 	                                    // s_2.device()->angle,  //4400
 	                                    // s_3.device()->angle,  //5119
 	                                    // s_4.device()->angle,  //5765
-	                                    gimbal()->ins_yaw,
+	                                    // gimbal()->s_yaw_pos_equally * M_PI / 180,
+	                                    ins->yaw,
+	                                    gimbal()->s_yaw_pos_equally,
+	                                    gimbal()->b_yaw_pos,
+	                                    gimbal()->b_yaw_pos - gimbal()->s_yaw_pos_equally * M_PI / 180,
 	                                    chassis_s.getTotalPredictNotLimitPower(),
 	                                    chassis_s.getTotalPowerLimit(),
 	                                    chassis_s.getTotalPredictPower()

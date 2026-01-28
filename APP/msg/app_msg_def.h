@@ -8,7 +8,7 @@
 
 struct app_msg_gimbal_to_chassis {
     //底盘运动数据
-    float ins_yaw;
+    float s_yaw_pos_equally;
     float vx, vy, rotate;
     float b_yaw_pos;
     float chassis_power_limit;

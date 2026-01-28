@@ -147,6 +147,22 @@ void app_ins_task(void *args) {
                                  std::max(0.0f, temp_pid.update(data.raw.temp, 40))),
                 freq_cnt = 0;
 
+#ifdef COMPILE_CHASSIS
+        if(ins_flag == 2) {
+            double gyro[3] = { data.raw.gyro[0] - gyro_correct[0],
+                               data.raw.gyro[1] - gyro_correct[1],
+                               data.raw.gyro[2] - gyro_correct[2] };
+            IMU_QuaternionEKF_Update(static_cast<float>(gyro[0]),
+                                     static_cast<float>(gyro[1]),
+                                     static_cast<float>(gyro[2]),
+                                     data.raw.accel[0],
+                                     data.raw.accel[1],
+                                     data.raw.accel[2]);
+            std::tie(data.roll, data.pitch, data.yaw) = IMU_QuaternionEKF_Data();
+        }
+#endif
+
+#ifdef COMPILE_GIMBAL
         if(ins_flag == 2) {
             // 先做陀螺零偏
             double gyro_sensor[3] = {
@@ -178,6 +194,7 @@ void app_ins_task(void *args) {
                                      static_cast<float>(accel_body[2]));
             std::tie(data.roll, data.pitch, data.yaw) = IMU_QuaternionEKF_Data();
         }
+#endif
 
         if(ins_flag == 0) {
             if(count) {
