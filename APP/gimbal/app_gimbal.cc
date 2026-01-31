@@ -49,6 +49,8 @@ DMMotor b_yaw("gimbal_yaw_big", DMMotor::J4310, (DMMotor::Param) {
 });
 PID b_yaw_speed(1.0, 0.00040, 0, 9, 4);
 PID b_yaw_angle(0.21, 0.0010, 0, 48, 36);
+
+
 //todo:调angle环的ki
 
 MotorController m_trigger(std::make_unique <DJIMotor>(
@@ -168,12 +170,14 @@ float s_yaw_output;
 float pit_target;
 float pit_current;
 float pit_output;
+int8_t pit_towards_flag = 0;
 
 float s_yaw_enc_deg;
 float b_yaw_real_speed;
 float b_yaw_target;
 float b_yaw_current;
 float b_yaw_output;
+int8_t s_yaw_towards_flag = 0;
 
 double trigger_speed;
 double left_shoot_speed;
@@ -182,6 +186,9 @@ double right_shoot_speed;
 float chassis_vx;
 float chassis_vy;
 float chassis_rotate;
+
+int8_t lst_ctrl_mode = 0;
+float lst_s_yaw_pos = 0;
 
 const auto ins = app_ins_data();
 const auto rc = bsp_rc_data();
@@ -272,7 +279,7 @@ void app_gimbal_task(void *args) {
 
             //选择控制源
             if(rc->s_r == -1) {
-                //备用,目前当作失能模式,情况同控制器离线:Yyp位置不控制(维持原位)，xy速度和shooter速度置为0,
+                //失能
                 trigger_speed = 0;
                 left_shoot_speed = 0;
                 right_shoot_speed = 0;
@@ -315,8 +322,8 @@ void app_gimbal_task(void *args) {
                     //确认瞄准后再移动云台
                     if(vd->mode == 1 or vd->mode == 2) {
                         //云台控制
-                        pit_target = 4.0+ (vd->pitch * 180.0 / M_PI);
-                        s_yaw_target = -2.6+ (vd->yaw * 180.0 / M_PI);
+                        pit_target = static_cast<float>(vd->pitch * 180.0 / M_PI);
+                        s_yaw_target = static_cast<float>(vd->yaw * 180.0 / M_PI);
                         //确认射击指令后再射击
                         //todo:加低通滤波
                         // if(vd->mode == 2 and rc->s_l == 1) {
@@ -336,10 +343,10 @@ void app_gimbal_task(void *args) {
                         left_shoot_speed = 0;
                         right_shoot_speed = 0;
                     }
-                    //底盘控制部分，目前没有接口，速度置为0
-                    chassis_vx = 0;
-                    chassis_vy = 0;
-                    chassis_rotate = 0;
+                    //底盘控制部分，目前没有接口，速度从遥控器获取，有导航之后可以等于导航速度
+                    chassis_vx = static_cast<float>(8.0*rc->rc_l[0]);
+                    chassis_vy = static_cast<float>(8.0*rc->rc_l[1]);
+                    chassis_rotate = static_cast<float>(8.0*rc->reserved);
 
                 }else {
                     //小电脑通信离线，云台Yyp不控制，底盘速度和发射机构速度置为0
@@ -363,53 +370,131 @@ void app_gimbal_task(void *args) {
         }
 
 
-        //电机控制区，分为pit轴，小yaw轴，大yaw轴控制、VxVy控制发送、摩擦轮和拨弹盘控制
-        //pit轴控制量设置
-        if (pit_target < -5) pit_target = -5;//pitch限位
-        if (pit_target > 25) pit_target = 25;
-        pit_current = ins->roll;
-        //pit轴控制
-        pit_output = pit_target;
-        pit_output = pit_angle.update((pit_current), (pit_output));
-        pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
-        pit.update((pit_output));
 
-        //小yaw轴状态量设置
-        yaw_unwrapped = unwrap_yaw_deg(ins->yaw);
-        //小yaw轴控制量设置
-        s_yaw_current = static_cast<float>(yaw_unwrapped);
-        //小yaw轴控制
-        s_yaw_output = s_yaw_target;
-        s_yaw_angle_err = s_yaw_output - s_yaw_current;//规划最短路径
-        s_yaw_angle_err = wrap_to_minus180_180(s_yaw_angle_err);
-        s_yaw_output = s_yaw_angle.update((0.0), (s_yaw_angle_err));
-        s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output));
-        s_yaw.update((s_yaw_output));
-        //大yaw状态量设置
-        s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 3423, 8192));//小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
-        //大yaw控制量设置
-        b_yaw_target = 0;
-        b_yaw_current = s_yaw_enc_deg;
-        //重新使能
-        if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
-            b_yaw.reset();
-            b_yaw.enable();
-        }
-        //含死区的控制：
-        if(abs(b_yaw_current)<0.00) {
-            //此时进入死区,不更新pid，并且发空包.如果你设置小于0则不启用死区
-            b_yaw.control(0,0,0,0,0);
-        }else {
-            //出死区了，继续更新pid并控制
-            //大yaw轴更新pid
+        //电机控制区,通过不同条件选择进入 小yaw扫描pid//大yaw跟小yaw控制pid 两种控制模式
+        if(rc->s_r == 1 and vd->mode == 0) {
+            // 扫描控制区,当遥控器切换为小电脑控制且自瞄发送未识别到时进入此模式
+            //小yaw和pitch轴来回运动，大yaw恒定速度运动来扫描周围情况
+
+            //pit轴扫描
+            if(pit_towards_flag == 0) {
+                pit_target += 0.12f;
+                if(pit_target >= 25) {
+                    pit_towards_flag = 1;
+                }
+            }
+            else {
+                pit_target -= 0.12f;
+                if(pit_target <= -15) {
+                    pit_towards_flag = 0;
+                }
+            }
+            //pitch限位
+            if (pit_target < -15) pit_target = -15;
+            if (pit_target > 25) pit_target = 25;
+            pit_current = ins->roll;
+            //pit轴控制
+            pit_output = pit_target;
+            pit_output = pit_angle.update((pit_current), (pit_output));
+            pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
+            pit.update((pit_output));
+
+            //小yaw扫描
+            if(s_yaw_towards_flag == 0) {
+                s_yaw_target += 0.18f;
+                if(s_yaw_target >= 50) {
+                    s_yaw_towards_flag = 1;
+                }
+            }
+            else {
+                s_yaw_target -= 0.12f;
+                if(s_yaw_target <= -50) {
+                    s_yaw_towards_flag = 0;
+                }
+            }
+            //yaw限位
+            if (s_yaw_target < -50) s_yaw_target = -50;
+            if (s_yaw_target > 50) s_yaw_target = 50;
+            s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 3423, 8192));
+            s_yaw_current = -s_yaw_enc_deg;
+            s_yaw_output = s_yaw_target;
+            s_yaw_output = s_yaw_angle.update(s_yaw_current, s_yaw_output);
+            s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output));
+            s_yaw.update((s_yaw_output));
+
+            // 大yaw转动
+            b_yaw_target = 2.0;
+            b_yaw_current = b_yaw.status.vel;
+            //重新使能
+            if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
+                b_yaw.reset();
+                b_yaw.enable();
+            }
             b_yaw_output = b_yaw_target;
-            b_yaw_output = b_yaw_angle.update((-b_yaw_current), (b_yaw_output));
             b_yaw_output = b_yaw_speed.update((b_yaw.status.vel), (b_yaw_output));
-            //控制，正对应顺时针转
             b_yaw.control(0,0,0,0,(b_yaw_output));
+            //测试，发空包,为了得到反馈数据,取消注释这个时 把上面含死区的控制注释掉
+            // b_yaw.control(0,0,0,0,0);//发空包
+
+            lst_ctrl_mode = -1;
+            lst_s_yaw_pos = ins->yaw;
+        }else {
+            // 云台跟随控制区,除了上面情况之外都进入此模式
+            if(lst_ctrl_mode == -1) {
+                s_yaw_target = ins->yaw ;
+                lst_ctrl_mode = 0;
+            }
+            //pit轴控制量设置
+            if (pit_target < -5) pit_target = -5;//pitch限位
+            if (pit_target > 25) pit_target = 25;
+            pit_current = ins->roll;
+            //pit轴控制
+            pit_output = pit_target;
+            pit_output = pit_angle.update((pit_current), (pit_output));
+            pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
+            pit.update((pit_output));
+
+            //小yaw轴状态量设置
+            yaw_unwrapped = unwrap_yaw_deg(ins->yaw);
+            //小yaw轴控制量设置
+            s_yaw_current = static_cast<float>(yaw_unwrapped);
+            //小yaw轴控制
+            s_yaw_output = s_yaw_target;
+            s_yaw_angle_err = s_yaw_output - s_yaw_current;//规划最短路径
+            s_yaw_angle_err = wrap_to_minus180_180(s_yaw_angle_err);
+            s_yaw_output = s_yaw_angle.update((0.0), (s_yaw_angle_err));
+            s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output));
+            s_yaw.update((s_yaw_output));
+            //大yaw状态量设置
+            s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 3423, 8192));//小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
+            //大yaw控制量设置
+            b_yaw_target = 0;
+            b_yaw_current = s_yaw_enc_deg;
+            //重新使能
+            if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
+                b_yaw.reset();
+                b_yaw.enable();
+            }
+            //含死区的控制：
+            if(abs(b_yaw_current)<0.0) {
+                //此时进入死区,不更新pid，并且发空包.如果你设置小于0则不启用死区
+                b_yaw.control(0,0,0,0,0);
+            }else {
+                //出死区了，继续更新pid并控制
+                //大yaw轴更新pid
+                b_yaw_output = b_yaw_target;
+                b_yaw_output = b_yaw_angle.update((-b_yaw_current), (b_yaw_output));
+                b_yaw_output = b_yaw_speed.update((b_yaw.status.vel), (b_yaw_output));
+                //控制，正对应顺时针转
+                b_yaw.control(0,0,0,0,(b_yaw_output));
+            }
+            // //测试，发空包,为了得到反馈数据,取消注释这个时 把上面含死区的控制注释掉
+            // b_yaw.control(0,0,0,0,0);//发空包
+            lst_ctrl_mode = 0;
         }
-        // //测试，发空包,为了得到反馈数据,取消注释这个时 把上面含死区的控制注释掉
-        // b_yaw.control(0,0,0,0,0);//发空包
+
+
+
 
 
         //发射机构控制
@@ -433,9 +518,9 @@ void app_gimbal_task(void *args) {
             // ins->yaw,
             // ins->raw.gyro[2],
             // rc->rc_r[0],
-            s_yaw_target,
-            s_yaw_current,
-            s_yaw_output
+            s_yaw_target
+            // s_yaw_current,
+            // s_yaw_output
 
             // s_yaw_enc_deg,
             // b_yaw_real_speed,
