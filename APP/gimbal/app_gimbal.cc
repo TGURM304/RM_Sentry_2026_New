@@ -469,7 +469,12 @@ void app_gimbal_task(void *args) {
             s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 3423, 8192));//小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
             //大yaw控制量设置
             b_yaw_target = 0;
-            b_yaw_current = s_yaw_enc_deg;
+            if(bsp_time_get_ms() - s_yaw.status.last_online_time <= 50) {
+                b_yaw_current = s_yaw_enc_deg;
+            }else {
+                b_yaw_current = 0;
+            }
+
             //重新使能
             if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
                 b_yaw.reset();
@@ -518,16 +523,16 @@ void app_gimbal_task(void *args) {
             // ins->yaw,
             // ins->raw.gyro[2],
             // rc->rc_r[0],
-            s_yaw_target
+            // s_yaw_target
             // s_yaw_current,
             // s_yaw_output
 
             // s_yaw_enc_deg,
             // b_yaw_real_speed,
             // b_yaw.status.vel,
-            // b_yaw_target,
-            // b_yaw_current,
-            // b_yaw_output
+            b_yaw_target,
+            b_yaw_current,
+            b_yaw_output
             // static_cast <float> (rc->rc_r[0]),
             // ins->yaw,
             // s_yaw.feedback_.angle,
