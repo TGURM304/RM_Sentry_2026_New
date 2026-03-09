@@ -76,7 +76,7 @@ void app_sys_init() {
     app_gimbal_init();
 #endif
 #ifdef USE_REFEREE_SYSTEM
-    app_referee_init();
+//新赛季更改为手动设置功率在云台和底盘的app里
 #endif
 #ifdef USE_FLASH_CHECK
     // 校验 flash 中的 brief，若此处校验不通过，请连接 terminal 执行 flash clear

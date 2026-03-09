@@ -22,6 +22,9 @@
 #include "app_msg_def.h"
 #include "power_manager.h"
 
+#include "app_referee.h"
+#include "app_referee_def.h"
+
 #ifdef COMPILE_CHASSIS
 
 /////////////////////////////////////////////////////////////////////////////
@@ -43,6 +46,7 @@
 
 using namespace Motor;
 using namespace Controller;
+using namespace robomaster;
 
 MotorController w_1(std::make_unique <DJIMotor> (
     "w_1",
@@ -213,18 +217,24 @@ void send_msg_to_gimbal() {
     app_msg_can_send(E_CAN3, 0x044, pkg);
 }
 
+float chassis_power_limit = 100.0f;
+float cap_decay_alpha = 1.0;
 
 // 静态任务，在 CubeMX 中配置
 void app_chassis_task(void *args) {
 	// Wait for system init.
 	while(!app_sys_ready()) OS::Task::SleepMilliseconds(10);
 
-    int zero_count = 0;
+
     bsp_uart_set_callback(E_UART_DEBUG, set_target);
     gimbal.init();
+    basic::init(E_UART_REFEREE);
+    CAP::init();
+    CAP::send(gimbal()->chassis_power_limit);
+
 
     double vx = 0, vy = 0, rotate = 0;
-    const double eps = 1e-7;
+
 
 	while(true) {
 
@@ -290,6 +300,18 @@ void app_chassis_task(void *args) {
 
 
 	    //功率分配与控制
+	    //设置超级电容充放电功率，目前设置为云台传的功率上限，即三个功率（裁判系统功率上限，超电充放电功率，功率模型限制功率）相同均为裁判系统的100w
+	    if(CAP::data()->limit_power != static_cast<uint8_t>(gimbal()->chassis_power_limit)) {
+	      CAP::send(gimbal()->chassis_power_limit);
+	        //todo:存在一个问题，超电留有余量，你给他发100w实际上是平均95w充放电功率，所以才会出现超电掉电,所以可以加余量
+	    }
+	    //保险设置如果超电耗电超过一半，则在50%以下根据比例来缩小目标限制功率
+	    // if(false) {
+	    if(bsp_time_get_ms() - CAP::data()->last_online_time < 100 and CAP::data()->cap_percent > 0 and CAP::data()->cap_percent <= 50) {
+            cap_decay_alpha = static_cast<float>(CAP::data()->cap_percent) * 2 / 100;
+	    }else {
+	        cap_decay_alpha = 1.0;
+	    }
         //先分配舵和轮的功率
 	    s_w_power_vector = allocate_SW_power(gimbal()->chassis_power_limit,0.5,chassis_s.getTotalPredictNotLimitPower());
 	    //四个轮的功率分配
@@ -297,7 +319,7 @@ void app_chassis_task(void *args) {
 	    chassis_w.updateMotorError(1,w_2.target() - w_2.speed );
 	    chassis_w.updateMotorError(2,w_3.target() - w_3.speed );
 	    chassis_w.updateMotorError(3,w_4.target() - w_4.speed );
-	    chassis_w.allocatePower(s_w_power_vector[1]);
+	    chassis_w.allocatePower(s_w_power_vector[1],cap_decay_alpha);
 	    m3508_1_power.limiter(&w_1.output,w_1.speed,m3508_1_power.power_limit);
 	    m3508_2_power.limiter(&w_2.output,w_2.speed,m3508_2_power.power_limit);
 	    m3508_3_power.limiter(&w_3.output,w_3.speed,m3508_3_power.power_limit);
@@ -311,7 +333,7 @@ void app_chassis_task(void *args) {
 	    chassis_s.updateMotorError(1,s_2.target() - s_2.angle );
 	    chassis_s.updateMotorError(2,s_3.target() - s_3.angle );
 	    chassis_s.updateMotorError(3,s_4.target() - s_4.angle );
-	    chassis_s.allocatePower(s_w_power_vector[0]);
+	    chassis_s.allocatePower(s_w_power_vector[0],cap_decay_alpha);
 	    gm6020_1_power.limiter(&s_1.output,s_1.speed,gm6020_1_power.power_limit);
 	    gm6020_2_power.limiter(&s_2.output,s_2.speed,gm6020_2_power.power_limit);
 	    gm6020_3_power.limiter(&s_3.output,s_3.speed,gm6020_3_power.power_limit);
@@ -329,12 +351,31 @@ void app_chassis_task(void *args) {
 	                                    // s_4.device()->angle,  //5765
 	                                    // gimbal()->s_yaw_pos_equally * M_PI / 180,
 	                                    ins->yaw,
-	                                    gimbal()->s_yaw_pos_equally,
-	                                    gimbal()->b_yaw_pos,
-	                                    gimbal()->b_yaw_pos - gimbal()->s_yaw_pos_equally * M_PI / 180,
-	                                    chassis_s.getTotalPredictNotLimitPower(),
-	                                    chassis_s.getTotalPowerLimit(),
-	                                    chassis_s.getTotalPredictPower()
+	                                    basic::data()->power_heat_data.buffer_energy,
+	                                    basic::data()->robot_status.chassis_power_limit,
+
+	                                    // gimbal()->s_yaw_pos_equally,
+	                                    // gimbal()->b_yaw_pos,
+	                                    // gimbal()->b_yaw_pos - gimbal()->s_yaw_pos_equally * M_PI / 180,
+	                                    gimbal()->chassis_power_limit,
+	                                    CAP::data()->cap_current,
+	                                    CAP::data()->cap_voltage,
+	                                    CAP::data()->cap_percent,
+	                                    CAP::data()->input_power,
+	                                    CAP::data()->last_online_time,
+	                                    bsp_time_get_ms(),
+	                                    CAP::data()->limit_power,
+	                                    cap_decay_alpha
+	                                    // chassis_s.getTotalPredictNotLimitPower(),
+	                                    // chassis_s.getTotalPowerLimit(),
+	                                    // chassis_s.getTotalPredictPower(),
+	                                    // gimbal()->vx,
+	                                    // gimbal()->vy,
+                                     //    gimbal()->rotate,
+                                     //    m3508_1_power.power_limit,
+                                     //    w_1.speed,
+                                     //    w_1.current
+
 	                                    );
 
 		OS::Task::SleepMilliseconds(1);
@@ -342,6 +383,7 @@ void app_chassis_task(void *args) {
 }
 
 void app_chassis_init() {
+
     w_1.init(); w_2.init(); w_3.init(); w_4.init();
 	w_1.add_controller(std::make_unique <MotorBasePID> (
 		MotorBasePID::PID_SPEED,

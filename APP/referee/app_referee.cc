@@ -1,268 +1,128 @@
 //
-// Created by fish on 2025/3/1.
+// Created by fish on 2026/2/3.
 //
 
 #include "app_referee.h"
-
-#include "alg_crc.h"
-#include "bsp_time.h"
-#include "bsp_uart.h"
-#include "dev_cap.h"
-#include "sys_queue.h"
-#include "sys_task.h"
-
-#include <algorithm>
+#include "app_referee_def.h"
 #include <cstring>
-#include <vector>
 
-static app_referee_header_t header;
-static app_referee_data_t data;
+#include "bsp_time.h"
+#include "alg_crc.h"
 
-/* Init */
 
-OS::Task ui;
-void ui_task(void *args);
-void callback(bsp_uart_e e, uint8_t *s, uint16_t l);
-void app_referee_init() {
-    bsp_uart_set_callback(E_UART_REFEREE, callback);
-    ui.Create(ui_task, static_cast<void *>(nullptr), "ui", 512, OS::Task::MEDIUM);
+using namespace robomaster;
+
+namespace robomaster::basic {
+    data_t data_;
+    frame_header_t header;
+    void callback(bsp_uart_e device, uint8_t *data, uint16_t size);
 }
 
-/* Receive */
+const basic::data_t* basic::data() {
+    return &data_;
+}
 
-void solver(uint8_t *s) {
-#define upd(x) std::copy_n(s + 2, sizeof(data.x), reinterpret_cast<uint8_t *>(&data.x))
-    switch(*reinterpret_cast<uint16_t *>(s)) {
+void basic::init(bsp_uart_e uart) {
+    //常规链路 波特率115200,
+    bsp_uart_init(E_UART_REFEREE, &huart7);
+    bsp_uart_set_callback(E_UART_REFEREE, callback);
+}
+
+void basic::callback(bsp_uart_e device, uint8_t* data, uint16_t size) {
+    if (size < sizeof(frame_header_t)) return;
+
+    size_t p = 0;
+    while (p + sizeof(frame_header_t) < size) {
+        memcpy(&header, data + p, sizeof(frame_header_t));
+        if (header.sof != 0xa5 or !CRC8::verify(header)) { p ++; continue; }
+        if (CRC16::calc(data + p, sizeof(frame_header_t) + 2 + header.data_length) !=
+            *(uint16_t *)(data + p + sizeof(frame_header_t) + 2 + header.data_length))
+        {
+            p ++;
+            continue;
+        }
+
+        uint16_t cmd_id = *(uint16_t *)(data + p + sizeof(frame_header_t));
+        p += sizeof(frame_header_t) + 2;
+
+#define upd(x) if(header.data_length == sizeof(data_.x)) memcpy(&data_.x, data + p, sizeof(data_.x)), data_.timestamps.x = bsp_time_get_ms()
+        switch(cmd_id) {
         case 0x0001: upd(game_status); break;
         case 0x0002: upd(game_result); break;
         case 0x0003: upd(game_robot_hp); break;
+        case 0x0101: upd(event_data); break;
+        case 0x0104: upd(referee_warning); break;
+        case 0x0105: upd(dart_info); break;
         case 0x0201: upd(robot_status); break;
         case 0x0202: upd(power_heat_data); break;
         case 0x0203: upd(robot_pos); break;
-        case 0x0204: upd(robot_buff); break;
+        case 0x0204: upd(buff); break;
         case 0x0206: upd(hurt_data); break;
         case 0x0207: upd(shoot_data); break;
         case 0x0208: upd(projectile_allowance); break;
         case 0x0209: upd(rfid_status); break;
-        case 0x020B: upd(ground_robot_position); break;
-        case 0x020D: upd(sentry_info); break;
-        case 0x0302: upd(custom_controller); data.custom_controller_timestamp = bsp_time_get_ms(); break;
-        case 0x0304: upd(remote_control); break;
-        default: break;
-    }
-    data.timestamp = bsp_time_get_ms();
+        case 0x020a: upd(dart_client_cmd); break;
+        case 0x020b: upd(ground_robot_position); break;
+        case 0x020c: upd(radar_mark_data); break;
+        case 0x020d: upd(sentry_info); break;
+        case 0x020e: upd(radar_info); break;
+        default:
+            break;
+        }
+
 #undef upd
-}
 
-void callback(bsp_uart_e e, uint8_t *s, uint16_t l) {
-    if(l < sizeof(header)) return;
-    for(size_t i = 0; i < l; i++) {
-        if(s[i] != 0xA5) continue;
-        if(!CRC8::verify(s + i, sizeof(header))) continue;
-        std::copy_n(s + i, sizeof(header), reinterpret_cast<uint8_t *>(&header));
-        if(!CRC16::verify(s + i, header.data_length + sizeof(header) + 4)) continue;
-        solver(s + i + sizeof(header));
-        i += header.data_length + sizeof(header) + 4 - 1;
+        p += header.data_length + 2; // data + crc16
     }
 }
 
-const app_referee_data_t *app_referee_data() {
-    return &data;
-}
-
-/* Transmit */
-
-static uint8_t tx_buf[1024];
-void transmit(uint16_t cmd_id, uint8_t *s, uint16_t l) {
-    // header
-    app_referee_header_t pkg_header = {
-        .sof = 0xA5, .data_length = l, .seq = 0, .crc = 0
-    };
-    CRC8::append(pkg_header); std::copy_n(reinterpret_cast<uint8_t *>(&pkg_header), sizeof(pkg_header), tx_buf);
-    // cmd_id
-    std::copy_n(reinterpret_cast<uint8_t *>(&cmd_id), sizeof(cmd_id), tx_buf + sizeof(pkg_header));
-    // data
-    std::copy_n(s, l, tx_buf + sizeof(pkg_header) + sizeof(cmd_id));
-    // crc16
-    uint16_t crc = CRC16::calc(tx_buf, sizeof(pkg_header) + sizeof(cmd_id) + l);
-    std::copy_n(reinterpret_cast<uint8_t *>(&crc), sizeof(crc), tx_buf + sizeof(pkg_header) + sizeof(cmd_id) + l);
-
-    bsp_uart_send(E_UART_REFEREE, tx_buf, sizeof(pkg_header) + sizeof(cmd_id) + l + sizeof(crc));
-}
-
-static OS::Queue <app_referee_ui_figure_t> ui_figure_queue_(25);
-static OS::Queue <app_referee_ui_string_t> ui_string_queue_(25);
-static app_referee_ui_figure_t ui_figure_pkg;
-static app_referee_ui_string_t ui_string_pkg;
-static uint8_t ui_buf[150];
-
-// 增加
-void app_referee_ui_add(
-    const char *name, uint8_t figure_type, uint8_t layer, uint16_t color, uint32_t width, uint32_t x, uint32_t y,
-    uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e
-) {
-    app_referee_ui_figure_t pkg = {
-        .operate_type = 1,
-        .figure_type = figure_type,
-        .layer = layer,
-        .color = color,
-        .details_a = a,
-        .details_b = b,
-        .width = width,
-        .start_x = x,
-        .start_y = y,
-        .details_c = c,
-        .details_d = d,
-        .details_e = e
-    };
-    std::copy_n(name, std::min(sizeof(pkg.figure_name), strlen(name)), pkg.figure_name);
-    ui_figure_queue_.send(pkg);
-}
-
-// 增加 STRING
-void app_referee_ui_add_string(
-    const char *name, uint8_t layer, uint16_t color, uint32_t width, uint32_t x, uint32_t y,
-    uint32_t font_size, const char *str
-) {
-    app_referee_ui_string_t pkg = {
-        .operate_type = 1,
-        .figure_type = 7,
-        .layer = layer,
-        .color = color,
-        .details_a = font_size,
-        .details_b = std::min(sizeof(pkg.data), strlen(str)),
-        .width = width,
-        .start_x = x,
-        .start_y = y
-    };
-    std::copy_n(name, std::min(sizeof(pkg.figure_name), strlen(name)), pkg.figure_name);
-    std::copy_n(str, std::min(sizeof(pkg.data), strlen(str)), pkg.data);
-    ui_string_queue_.send(pkg);
-}
-
-// 修改
-void app_referee_ui_upd(
-    const char *name, uint8_t figure_type, uint8_t layer, uint16_t color, uint32_t width, uint32_t x, uint32_t y,
-    uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e
-) {
-    app_referee_ui_figure_t pkg = {
-        .operate_type = 2,
-        .figure_type = figure_type,
-        .layer = layer,
-        .color = color,
-        .details_a = a,
-        .details_b = b,
-        .width = width,
-        .start_x = x,
-        .start_y = y,
-        .details_c = c,
-        .details_d = d,
-        .details_e = e
-    };
-    std::copy_n(name, std::min(sizeof(pkg.figure_name), strlen(name)), pkg.figure_name);
-    ui_figure_queue_.send(pkg);
-}
-
-// 修改 STRING
-void app_referee_ui_upd_string(
-    const char *name, uint8_t layer, uint16_t color, uint32_t width, uint32_t x, uint32_t y,
-    uint32_t font_size, const char *str
-) {
-    app_referee_ui_string_t pkg = {
-        .operate_type = 2,
-        .figure_type = 7,
-        .layer = layer,
-        .color = color,
-        .details_a = font_size,
-        .details_b = std::min(sizeof(pkg.data), strlen(str)),
-        .width = width,
-        .start_x = x,
-        .start_y = y
-    };
-    std::copy_n(name, std::min(sizeof(pkg.figure_name), strlen(name)), pkg.figure_name);
-    std::copy_n(str, std::min(sizeof(pkg.data), strlen(str)), pkg.data);
-    ui_string_queue_.send(pkg);
-}
-
-
-// 删除
-void app_referee_ui_del(
-    const char *name, uint8_t layer
-) {
-    app_referee_ui_figure_t pkg = {
-        .operate_type = 3,
-        .layer = layer,
-    };
-    std::copy_n(name, std::min(sizeof(pkg.figure_name), strlen(name)), pkg.figure_name);
-    ui_figure_queue_.send(pkg);
-}
-
-void ui_task(void *args) {
-    uint16_t sender = 3, receiver = 0x0103;
-    while(true) {
-        while(!ui_figure_queue_.size() and !ui_string_queue_.size())
-            OS::Task::SleepMilliseconds(1);
-        if(ui_string_queue_.size()) {
-            app_referee_robot_interaction_header_t ui_header = {
-                .data_cmd_id = 0x0110,
-                .sender_id = sender,
-                .receiver_id = receiver,
-            };
-            std::copy_n(reinterpret_cast<uint8_t *>(&ui_header), sizeof(ui_header), ui_buf);
-            ui_string_queue_.receive(ui_string_pkg);
-            std::copy_n(reinterpret_cast<uint8_t *>(&ui_string_pkg), sizeof(ui_string_pkg), ui_buf + sizeof(ui_header));
-            transmit(0x0301, ui_buf, sizeof(ui_header) + sizeof(ui_string_pkg));
-        }
-        else if(ui_figure_queue_.size() < 3) {
-            app_referee_robot_interaction_header_t ui_header = {
-                .data_cmd_id = 0x0101,
-                .sender_id = sender,
-                .receiver_id = receiver
-            };
-            std::copy_n(reinterpret_cast<uint8_t *>(&ui_header), sizeof(ui_header), ui_buf);
-            ui_figure_queue_.receive(ui_figure_pkg);
-            std::copy_n(reinterpret_cast<uint8_t *>(&ui_figure_pkg), sizeof(ui_figure_pkg), ui_buf + sizeof(ui_header));
-            transmit(0x0301, ui_buf, sizeof(ui_header) + sizeof(ui_figure_pkg));
-        }
-        else if(ui_figure_queue_.size() < 5) {
-            app_referee_robot_interaction_header_t ui_header = {
-                .data_cmd_id = 0x0102,
-                .sender_id = sender,
-                .receiver_id = receiver
-            };
-            std::copy_n(reinterpret_cast<uint8_t *>(&ui_header), sizeof(ui_header), ui_buf);
-            for(size_t i = 0; i < 2; i++) {
-                ui_figure_queue_.receive(ui_figure_pkg);
-                std::copy_n(reinterpret_cast<uint8_t *>(&ui_figure_pkg), sizeof(ui_figure_pkg), ui_buf + sizeof(ui_header) + sizeof(ui_figure_pkg) * i);
-            }
-            transmit(0x0301, ui_buf, sizeof(ui_header) + sizeof(ui_figure_pkg) * 2);
-        }
-        else if(ui_figure_queue_.size() < 7) {
-            app_referee_robot_interaction_header_t ui_header = {
-                .data_cmd_id = 0x0103,
-                .sender_id = sender,
-                .receiver_id = receiver
-            };
-            std::copy_n(reinterpret_cast<uint8_t *>(&ui_header), sizeof(ui_header), ui_buf);
-            for(size_t i = 0; i < 5; i++) {
-                ui_figure_queue_.receive(ui_figure_pkg);
-                std::copy_n(reinterpret_cast<uint8_t *>(&ui_figure_pkg), sizeof(ui_figure_pkg), ui_buf + sizeof(ui_header) + sizeof(ui_figure_pkg) * i);
-            }
-            transmit(0x0301, ui_buf, sizeof(ui_header) + sizeof(ui_figure_pkg) * 5);
-        }
-        else {
-            app_referee_robot_interaction_header_t ui_header = {
-                .data_cmd_id = 0x0104,
-                .sender_id = sender,
-                .receiver_id = receiver
-            };
-            std::copy_n(reinterpret_cast<uint8_t *>(&ui_header), sizeof(ui_header), ui_buf);
-            for(size_t i = 0; i < 7; i++) {
-                ui_figure_queue_.receive(ui_figure_pkg);
-                std::copy_n(reinterpret_cast<uint8_t *>(&ui_figure_pkg), sizeof(ui_figure_pkg), ui_buf + sizeof(ui_header) + sizeof(ui_figure_pkg) * i);
-            }
-            transmit(0x0301, ui_buf, sizeof(ui_header) + sizeof(ui_figure_pkg) * 7);
-        }
-        OS::Task::SleepMilliseconds(35);
+namespace robomaster::image {
+    namespace rc {
+        raw_frame_t raw;
+        data_t rc_data_;
     }
+    void callback(bsp_uart_e device, uint8_t *data, uint16_t size);
+}
+
+const image::rc::data_t *image::rc::data() {
+    return &rc_data_;
+}
+
+void image::init(bsp_uart_e uart) {
+    static_assert(sizeof(rc::raw_frame_t) == 21);
+    //图传链路 波特率921600(但目前是115200，需单独调用函数更改）
+    bsp_uart_init(E_UART_REFEREE, &huart7);
+    bsp_uart_set_callback(E_UART_REFEREE, callback);
+}
+
+void image::callback(bsp_uart_e device, uint8_t* data, uint16_t size) {
+    if (size == sizeof(rc::raw_frame_t) and data[0] == 0xa9 and data[1] == 0x53) {
+        memcpy(&rc::raw, data, sizeof(rc::raw_frame_t));
+        if (!CRC16::verify(rc::raw)) return;
+
+        rc::rc_data_.l[0] = static_cast<int16_t>(static_cast<int16_t>(rc::raw.ch3) - 1024);
+        rc::rc_data_.l[1] = static_cast<int16_t>(static_cast<int16_t>(rc::raw.ch2) - 1024);
+        rc::rc_data_.r[0] = static_cast<int16_t>(static_cast<int16_t>(rc::raw.ch0) - 1024);
+        rc::rc_data_.r[1] = static_cast<int16_t>(static_cast<int16_t>(rc::raw.ch1) - 1024);
+        rc::rc_data_.dial = static_cast<int16_t>(static_cast<int16_t>(rc::raw.dial) - 1024);
+        rc::rc_data_.sw = static_cast<int8_t>(rc::raw.sw - 1);
+
+        rc::rc_data_.key_suspend = rc::raw.key_suspend;
+        rc::rc_data_.key_l = rc::raw.key_l;
+        rc::rc_data_.key_r = rc::raw.key_r;
+        rc::rc_data_.key_shoot = rc::raw.key_shoot;
+
+        rc::rc_data_.mouse_x = rc::raw.mouse_x;
+        rc::rc_data_.mouse_y = rc::raw.mouse_y;
+        rc::rc_data_.mouse_z = rc::raw.mouse_z;
+        rc::rc_data_.mouse_l = rc::raw.mouse_l;
+        rc::rc_data_.mouse_r = rc::raw.mouse_r;
+        rc::rc_data_.mouse_m = rc::raw.mouse_m;
+        rc::rc_data_.keyboard = rc::raw.keyboard;
+
+        rc::rc_data_.timestamp = bsp_time_get_ms();
+
+        return;
+    }
+
 }

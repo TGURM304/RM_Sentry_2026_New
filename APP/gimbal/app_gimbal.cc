@@ -206,7 +206,7 @@ void send_msg_to_chassis() {
         .vy = chassis_vy,
         .rotate = chassis_rotate,
         .b_yaw_pos = b_yaw.status.pos,
-        .chassis_power_limit = 120.0f,
+        .chassis_power_limit = 100.0f,
         // .k_rotate = -0.000069,//中平移速度
         .k_rotate = -0.000055,//高平移速度
 
@@ -293,9 +293,9 @@ void app_gimbal_task(void *args) {
                 pit_target -= static_cast <float> (rc->rc_r[1]) * 0.0002f;
                 s_yaw_target -= static_cast <float> (rc->rc_r[0]) * 0.0006f;
                 //底盘控制
-                chassis_vx = static_cast<float>(8.0*rc->rc_l[0]);
-                chassis_vy = static_cast<float>(8.0*rc->rc_l[1]);
-                chassis_rotate = static_cast<float>(8.0*rc->reserved);
+                chassis_vx = static_cast<float>(50.0*rc->rc_l[0]);
+                chassis_vy = static_cast<float>(50.0*rc->rc_l[1]);
+                chassis_rotate = static_cast<float>(50.0*rc->reserved);
                 // chassis_rotate = 0;
                 //射击控制
                 if(rc->s_l == 0) {
