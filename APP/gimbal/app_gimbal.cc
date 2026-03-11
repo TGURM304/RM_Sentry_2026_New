@@ -47,8 +47,8 @@ DMMotor b_yaw("gimbal_yaw_big", DMMotor::J4310, (DMMotor::Param) {
     .slave_id = 0x06, .master_id = 0x05, .port = E_CAN3, .mode = DMMotor::MIT,
     .p_max = 3.1415926535, .v_max = 30, .t_max = 10, .kp_max = 500, .kd_max = 5
 });
-PID b_yaw_speed(1.0, 0.00040, 0, 9, 4);
-PID b_yaw_angle(0.21, 0.0010, 0, 48, 36);
+PID b_yaw_speed(0.75, 0.0001, 0, 9, 4);
+PID b_yaw_angle(0.15, 0.0000, 0, 48, 36);
 
 
 //todo:调angle环的ki
@@ -278,8 +278,8 @@ void app_gimbal_task(void *args) {
             }
 
             //选择控制源
-            if(rc->s_r == -1) {
-                //失能
+            if(rc->s_r == 999) {
+                //失能,暂时不启用
                 trigger_speed = 0;
                 left_shoot_speed = 0;
                 right_shoot_speed = 0;
@@ -306,16 +306,16 @@ void app_gimbal_task(void *args) {
                 }else if(rc->s_l == 1) {
                     //低速射击
                     trigger_speed = -1500;
-                    left_shoot_speed = 7500;
-                    right_shoot_speed = -7500;
+                    left_shoot_speed = 6000;
+                    right_shoot_speed = -6000;
                 }else if(rc->s_l == -1) {
                     //高速射击
                     trigger_speed = -4500;
-                    left_shoot_speed = 7500;
-                    right_shoot_speed = -7500;
+                    left_shoot_speed = 6000;
+                    right_shoot_speed = -6000;
                 }
 
-            }else if(rc->s_r == 1) {
+            }else if(rc->s_r == 1 or rc->s_r == -1) {
                 //小电脑控制区
                 //小电脑数据离线检测
                 if(bsp_time_get_ms() - vision::last_update_time() <= 100) {
@@ -330,8 +330,8 @@ void app_gimbal_task(void *args) {
                         if(rc->s_l == 1) {
                             //自瞄允许发弹且遥控器允许发弹时控制发弹
                             trigger_speed = -1000;
-                            left_shoot_speed = 7500;
-                            right_shoot_speed = -7500;
+                            left_shoot_speed = 6000;
+                            right_shoot_speed = -6000;
                         }else {
                             trigger_speed = 0;
                             left_shoot_speed = 0;
@@ -452,6 +452,7 @@ void app_gimbal_task(void *args) {
             pit_output = pit_target;
             pit_output = pit_angle.update((pit_current), (pit_output));
             pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
+            // pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), pit_target = static_cast <float> (rc->rc_r[1]) * 1.0f);
             pit.update((pit_output));
 
             //小yaw轴状态量设置
@@ -463,7 +464,7 @@ void app_gimbal_task(void *args) {
             s_yaw_angle_err = s_yaw_output - s_yaw_current;//规划最短路径
             s_yaw_angle_err = wrap_to_minus180_180(s_yaw_angle_err);
             s_yaw_output = s_yaw_angle.update((0.0), (s_yaw_angle_err));
-            s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output));
+            s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output + b_yaw.status.vel * 0.6f));
             s_yaw.update((s_yaw_output));
             //大yaw状态量设置
             s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 3423, 8192));//小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
@@ -489,7 +490,7 @@ void app_gimbal_task(void *args) {
                 //大yaw轴更新pid
                 b_yaw_output = b_yaw_target;
                 b_yaw_output = b_yaw_angle.update((-b_yaw_current), (b_yaw_output));
-                b_yaw_output = b_yaw_speed.update((b_yaw.status.vel), (b_yaw_output));
+                b_yaw_output = b_yaw_speed.update((b_yaw.status.vel), (b_yaw_output + 0.02f *s_yaw.status.speed));
                 //控制，正对应顺时针转
                 b_yaw.control(0,0,0,0,(b_yaw_output));
             }
@@ -517,7 +518,9 @@ void app_gimbal_task(void *args) {
             // ins->raw.gyro[0],
             // rc->rc_r[1],
             // pit_target,
-            // pit_current
+            // pit_current,
+            // static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI),
+            // pit_output
 
             // s_yaw.status.speed,
             // ins->yaw,
@@ -530,14 +533,14 @@ void app_gimbal_task(void *args) {
             // s_yaw_enc_deg,
             // b_yaw_real_speed,
             // b_yaw.status.vel,
-            b_yaw_target,
-            b_yaw_current,
-            b_yaw_output
+            // b_yaw_target,
+            // b_yaw_current,
+            // b_yaw_output
             // static_cast <float> (rc->rc_r[0]),
             // ins->yaw,
             // s_yaw.feedback_.angle,
             // yaw_unwrapped,
-            // b_yaw.feedback_.pos,
+            // b_yaw.status.vel,
 
 
             // m_trigger.device()->angle,
@@ -552,13 +555,15 @@ void app_gimbal_task(void *args) {
             // chassis.timestamp,
             // b_yaw.feedback_.pos
 
-            // vd->mode,
-            // vd->pitch*180/M_PI,
-            // vd->yaw,
+            vd->mode,
+            vd->pitch*180/M_PI,
+            vd->yaw,
             // vd->crc16,
-            // ins->roll,
-            // vision::last_update_time(),
-            // bsp_time_get_ms()
+            ins->roll,
+            vision::last_update_time(),
+            bsp_time_get_ms(),
+            pit_target,
+            s_yaw_target
         );
 
         OS::Task::SleepMilliseconds(1);
