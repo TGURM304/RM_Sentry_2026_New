@@ -344,9 +344,9 @@ void app_gimbal_task(void *args) {
                         right_shoot_speed = 0;
                     }
                     //底盘控制部分，目前没有接口，速度从遥控器获取，有导航之后可以等于导航速度
-                    chassis_vx = static_cast<float>(8.0*rc->rc_l[0]);
-                    chassis_vy = static_cast<float>(8.0*rc->rc_l[1]);
-                    chassis_rotate = static_cast<float>(8.0*rc->reserved);
+                    chassis_vx = vd->vx;
+                    chassis_vy = vd->vy;
+                    chassis_rotate = 0.0f;
 
                 }else {
                     //小电脑通信离线，云台Yyp不控制，底盘速度和发射机构速度置为0

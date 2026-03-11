@@ -30,6 +30,8 @@ namespace vision {
         float pitch;            // 目标俯仰角(弧度制)
         float pitch_vel;        // 目标俯仰角速度
         float pitch_acc;        // 目标俯仰角加速度
+        float vx;
+        float vy;
         uint16_t crc16;
     } __attribute__((packed));
     static_assert(sizeof(RecvPacket) <= 64);
