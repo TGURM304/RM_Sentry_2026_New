@@ -208,7 +208,8 @@ void send_msg_to_chassis() {
         .b_yaw_pos = b_yaw.status.pos,
         .chassis_power_limit = 100.0f,
         // .k_rotate = -0.000069,//中平移速度
-        .k_rotate = -0.000055,//高平移速度
+        // .k_rotate = -0.000055,//高平移速度
+        .k_rotate = -0.000025,
 
     };
     app_msg_can_send(E_CAN3, 0x036, pkg);
@@ -295,7 +296,7 @@ void app_gimbal_task(void *args) {
                 //底盘控制
                 chassis_vx = static_cast<float>(50.0*rc->rc_l[0]);
                 chassis_vy = static_cast<float>(50.0*rc->rc_l[1]);
-                chassis_rotate = static_cast<float>(50.0*rc->reserved);
+                chassis_rotate = static_cast<float>(10.0*rc->reserved);
                 // chassis_rotate = 0;
                 //射击控制
                 if(rc->s_l == 0) {
@@ -344,8 +345,8 @@ void app_gimbal_task(void *args) {
                         right_shoot_speed = 0;
                     }
                     //底盘控制部分，目前没有接口，速度从遥控器获取，有导航之后可以等于导航速度
-                    chassis_vx = vd->vx;
-                    chassis_vy = vd->vy;
+                    chassis_vx = 5000*vd->vx;
+                    chassis_vy = 5000*vd->vy;
                     chassis_rotate = 0.0f;
 
                 }else {
@@ -520,15 +521,15 @@ void app_gimbal_task(void *args) {
             // pit_target,
             // pit_current,
             // static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI),
-            // pit_output
+            // pit_output,
 
             // s_yaw.status.speed,
             // ins->yaw,
             // ins->raw.gyro[2],
             // rc->rc_r[0],
-            // s_yaw_target
+            // s_yaw_target,
             // s_yaw_current,
-            // s_yaw_output
+            // s_yaw_output,
 
             // s_yaw_enc_deg,
             // b_yaw_real_speed,
@@ -559,11 +560,24 @@ void app_gimbal_task(void *args) {
             vd->pitch*180/M_PI,
             vd->yaw,
             // vd->crc16,
-            ins->roll,
+            // ins->roll,
             vision::last_update_time(),
             bsp_time_get_ms(),
-            pit_target,
-            s_yaw_target
+            // pit_target,
+            // s_yaw_target
+            vd->vx,
+            vd->vy,
+            chassis_vx,
+            chassis_vy,
+            chassis_rotate
+
+            // s_yaw.status.current,
+            // b_yaw.status.vel,
+            // pit.status.current,
+            // m_left_shoot.device()->current,
+            // m_right_shoot.device()->current,
+            // m_trigger.device()->current
+
         );
 
         OS::Task::SleepMilliseconds(1);
