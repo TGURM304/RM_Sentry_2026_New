@@ -27,6 +27,7 @@
 #include "app_msg_def.h"
 #include "bsp_buzzer.h"
 #include "app_music.h"
+#include "power_manager.h"
 
 #ifdef COMPILE_GIMBAL
 
@@ -70,6 +71,9 @@ MotorController m_right_shoot(std::make_unique <DJIMotor>(
     DJIMotor::M3508,
     (DJIMotor::Param) {.id = 0x02,.port = E_CAN1,.mode = DJIMotor::CURRENT}
 ));
+
+MovingAverageFilter vxFilter(100);
+MovingAverageFilter vyFilter(100);
 
 // 将编码器值(0~8191, 顺时针减小)转换为 [0,360) 角度，逆时针为正
 static inline double encoder_to_deg_ccw(int16_t enc, int16_t counts_per_rev)
@@ -327,26 +331,28 @@ void app_gimbal_task(void *args) {
                         s_yaw_target = static_cast<float>(vd->yaw * 180.0 / M_PI);
                         //确认射击指令后再射击
                         //todo:加低通滤波
-                        // if(vd->mode == 2 and rc->s_l == 1) {
-                        if(rc->s_l == 1) {
+                        if(vd->mode == 2 and rc->s_l == 1) {
+                        // if(rc->s_l == 1) {
                             //自瞄允许发弹且遥控器允许发弹时控制发弹
                             trigger_speed = -1000;
                             left_shoot_speed = 6000;
                             right_shoot_speed = -6000;
                         }else {
                             trigger_speed = 0;
-                            left_shoot_speed = 0;
-                            right_shoot_speed = 0;
+                            left_shoot_speed = 6000;
+                            right_shoot_speed = -6000;
                         }
                     }else {
                         //云台传自瞄状态0，此时云台Yyp不控制，发射机构速度置为0
                         trigger_speed = 0;
-                        left_shoot_speed = 0;
-                        right_shoot_speed = 0;
+                        left_shoot_speed = 6000;
+                        right_shoot_speed = -6000;
                     }
                     //底盘控制部分，目前没有接口，速度从遥控器获取，有导航之后可以等于导航速度
-                    chassis_vx = 5000*vd->vx;
-                    chassis_vy = 5000*vd->vy;
+                    chassis_vx = 15000*vd->vx;
+                    chassis_vy = 15000*vd->vy;
+                    // chassis_vx = static_cast<float>(vxFilter.update(15000 * vd->vx)) ;
+                    // chassis_vy = static_cast<float>(vyFilter.update(15000 * vd->vx)) ;
                     chassis_rotate = 0.0f;
 
                 }else {
@@ -446,8 +452,8 @@ void app_gimbal_task(void *args) {
                 lst_ctrl_mode = 0;
             }
             //pit轴控制量设置
-            if (pit_target < -5) pit_target = -5;//pitch限位
-            if (pit_target > 25) pit_target = 25;
+            if (pit_target < -10) pit_target = -5;//pitch限位
+            if (pit_target > 30) pit_target = 25;
             pit_current = ins->roll;
             //pit轴控制
             pit_output = pit_target;
@@ -465,8 +471,8 @@ void app_gimbal_task(void *args) {
             s_yaw_angle_err = s_yaw_output - s_yaw_current;//规划最短路径
             s_yaw_angle_err = wrap_to_minus180_180(s_yaw_angle_err);
             s_yaw_output = s_yaw_angle.update((0.0), (s_yaw_angle_err));
-            s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output + b_yaw.status.vel * 0.6f));
-            s_yaw.update((s_yaw_output));
+            s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output + s_yaw_angle_err *0.05f + b_yaw.status.vel * 0.6f));
+            s_yaw.update((s_yaw_output ));
             //大yaw状态量设置
             s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 3423, 8192));//小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
             //大yaw控制量设置
@@ -558,24 +564,27 @@ void app_gimbal_task(void *args) {
 
             vd->mode,
             vd->pitch*180/M_PI,
-            vd->yaw,
-            // vd->crc16,
-            // ins->roll,
+            ins->roll,
+            vd->yaw*180/M_PI,
+            unwrap_yaw_deg(ins->yaw),
+
             vision::last_update_time(),
             bsp_time_get_ms(),
-            // pit_target,
-            // s_yaw_target
-            vd->vx,
-            vd->vy,
-            chassis_vx,
-            chassis_vy,
-            chassis_rotate
+            m_left_shoot.device()->speed,
+            m_right_shoot.device()->speed,
+            m_trigger.device()->speed
+
+            // vd->vx,
+            // vd->vy,
+            // chassis_vx,
+            // chassis_vy,
+            // chassis_rotate
 
             // s_yaw.status.current,
             // b_yaw.status.vel,
             // pit.status.current,
-            // m_left_shoot.device()->current,
-            // m_right_shoot.device()->current,
+
+            // m_right_shoot.device()
             // m_trigger.device()->current
 
         );
