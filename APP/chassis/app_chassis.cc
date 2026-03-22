@@ -345,10 +345,14 @@ void app_chassis_task(void *args) {
 
 
 	    app_msg_vofa_send(E_UART_DEBUG,
-	                                    // s_1.device()->angle,  //340
-	                                    // s_2.device()->angle,  //4400
-	                                    // s_3.device()->angle,  //5119
-	                                    // s_4.device()->angle,  //5765
+	                                    s_1.device()->angle,  //340
+	                                    s_2.device()->angle,  //4400
+	                                    s_3.device()->angle,  //5119
+	                                    s_4.device()->angle,  //5765
+	                                    w_1.device()->speed,
+	                                    w_2.device()->speed,
+	                                    w_3.device()->speed,
+	                                    w_4.device()->speed
 	                                    // gimbal()->s_yaw_pos_equally * M_PI / 180,
 	                                    // ins->yaw,
 	                                    // basic::data()->power_heat_data.buffer_energy,
@@ -366,7 +370,7 @@ void app_chassis_task(void *args) {
 	                                    // bsp_time_get_ms(),
 	                                    // CAP::data()->limit_power,
 	                                    // cap_decay_alpha,
-	                                    basic::data()->shoot_data.initial_speed
+	                                    // basic::data()->shoot_data.initial_speed
 	                                    // chassis_s.getTotalPredictNotLimitPower(),
 	                                    // chassis_s.getTotalPowerLimit(),
 	                                    // chassis_s.getTotalPredictPower(),
