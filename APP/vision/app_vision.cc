@@ -41,7 +41,7 @@ uint32_t vision::last_update_time() {
 
 static auto ins = app_ins_data();
 
-void vision::send(float roll, float yaw, float yaw_vel, float pitch, float pitch_vel, float bullet_speed, uint16_t bullet_count) {
+void vision::send(float roll, float yaw, float yaw_vel, float pitch, float pitch_vel, float bullet_speed, uint8_t is_start, uint8_t hp) {
     float q[4];
     SendPacket pkg = {};
 
@@ -70,7 +70,9 @@ void vision::send(float roll, float yaw, float yaw_vel, float pitch, float pitch
     pkg.pitch = pitch;
     pkg.pitch_vel = pitch_vel;
     pkg.bullet_speed = bullet_speed;
-    pkg.bullet_count = bullet_count;
+    pkg.is_start = is_start;
+    pkg.hp = hp;
+    // pkg.bullet_count = bullet_count;
     // TODO: CRC 未测试
     CRC16::append(pkg);
     bsp_uart_send(E_UART_VISION, reinterpret_cast <uint8_t *> (&pkg), sizeof pkg);

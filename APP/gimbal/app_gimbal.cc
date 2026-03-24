@@ -248,7 +248,11 @@ void app_gimbal_task(void *args) {
             float pitch_vel = ins->raw.gyro[0];
             float yaw = ins->yaw / 180 * M_PI;
             float yaw_vel = ins->raw.gyro[2];
-            vision::send(roll, yaw, yaw_vel, pitch, pitch_vel, bullet_speed, bullet_count);
+            uint8_t is_start = 0;
+            uint16_t hp = 400;
+
+            vision::send(roll, yaw, yaw_vel, pitch, pitch_vel, bullet_speed, is_start, hp);
+
         }
 
         //双板通信
@@ -353,8 +357,8 @@ void app_gimbal_task(void *args) {
                         right_shoot_speed = -6000;
                     }
                     //底盘控制部分，目前没有接口，速度从遥控器获取，有导航之后可以等于导航速度
-                    chassis_vx = 15000*vd->vx;
-                    chassis_vy = 15000*vd->vy;
+                    chassis_vx = 15000*vd->nav_x;
+                    chassis_vy = 15000*vd->nav_y;
                     chassis_rotate = 0.0f;
                     // chassis_vx = static_cast<float>(vxFilter.update(15000 * vd->vx)) ;
                     // chassis_vy = static_cast<float>(vyFilter.update(15000 * vd->vx)) ;
