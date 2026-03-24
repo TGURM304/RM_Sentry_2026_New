@@ -10,6 +10,7 @@
 
 struct app_ins_data_t {
 	float yaw, pitch, roll;
+    float q[4];
 	bsp_imu_raw_data_t raw;
 };
 

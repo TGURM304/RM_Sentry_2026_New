@@ -22,8 +22,10 @@ static uint32_t last_update_time_ms = 0;
 
 void uart_rx_callback(bsp_uart_e e, uint8_t *s, uint16_t l) {
     if(l < sizeof rx_packet) return;
-    std::copy_n(s, sizeof rx_packet, reinterpret_cast <uint8_t *> (&rx_packet));
-    last_update_time_ms = bsp_time_get_ms();
+    if(CRC16::verify(s, sizeof rx_packet)) {
+        std::copy_n(s, sizeof rx_packet, reinterpret_cast <uint8_t *> (&rx_packet));
+        last_update_time_ms = bsp_time_get_ms();
+    }
 }
 
 void vision::init() {
@@ -41,26 +43,8 @@ uint32_t vision::last_update_time() {
 
 static auto ins = app_ins_data();
 
-void vision::send(float roll, float yaw, float yaw_vel, float pitch, float pitch_vel, float bullet_speed, uint8_t is_start, uint8_t hp) {
-    float q[4];
+void vision::send(const float *q, float yaw, float yaw_vel, float pitch, float pitch_vel, float bullet_speed, uint8_t is_start, uint8_t hp) {
     SendPacket pkg = {};
-
-    // 四元数计算
-    float half_roll  = roll  * 0.5f;
-    float half_pitch = pitch * 0.5f;
-    float half_yaw   = yaw   * 0.5f;
-
-    float cr = cosf(half_roll);
-    float sr = sinf(half_roll);
-    float cp = cosf(half_pitch);
-    float sp = sinf(half_pitch);
-    float cy = cosf(half_yaw);
-    float sy = sinf(half_yaw);
-
-    q[0] = cr * cp * cy + sr * sp * sy;  // w
-    q[1] = sr * cp * cy - cr * sp * sy;  // x
-    q[2] = cr * sp * cy + sr * cp * sy;  // y
-    q[3] = cr * cp * sy - sr * sp * cy;  // z
 
     pkg.mode = 1;
     for (size_t i = 0; i < 4; i++)
@@ -73,7 +57,6 @@ void vision::send(float roll, float yaw, float yaw_vel, float pitch, float pitch
     pkg.is_start = is_start;
     pkg.hp = hp;
     // pkg.bullet_count = bullet_count;
-    // TODO: CRC 未测试
     CRC16::append(pkg);
     bsp_uart_send(E_UART_VISION, reinterpret_cast <uint8_t *> (&pkg), sizeof pkg);
 }

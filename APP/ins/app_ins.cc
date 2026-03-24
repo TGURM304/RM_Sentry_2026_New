@@ -193,6 +193,7 @@ void app_ins_task(void *args) {
                                      static_cast<float>(accel_body[1]),
                                      static_cast<float>(accel_body[2]));
             std::tie(data.roll, data.pitch, data.yaw) = IMU_QuaternionEKF_Data();
+            memcpy(data.q, QEKF_INS.q, sizeof data.q);
         }
 #endif
 

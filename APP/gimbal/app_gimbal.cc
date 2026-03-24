@@ -243,15 +243,14 @@ void app_gimbal_task(void *args) {
             pc_send = 0;
             uint16_t bullet_count = 0;
             float bullet_speed = 20;
-            float roll = ins->pitch / 180 * M_PI;//注意：ins->roll实际上是ins->pitch,反之亦反
-            float pitch = ins->roll / 180 * M_PI;
+            float pitch = ins->pitch / 180 * M_PI;
             float pitch_vel = ins->raw.gyro[0];
             float yaw = ins->yaw / 180 * M_PI;
             float yaw_vel = ins->raw.gyro[2];
             uint8_t is_start = 0;
             uint16_t hp = 400;
 
-            vision::send(roll, yaw, yaw_vel, pitch, pitch_vel, bullet_speed, is_start, hp);
+            vision::send(ins->q, yaw, yaw_vel, pitch, pitch_vel, bullet_speed, is_start, hp);
 
         }
 
