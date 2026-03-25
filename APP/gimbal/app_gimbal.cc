@@ -44,56 +44,55 @@ DJIMotor pit("gimbal_pit", DJIMotor::GM6020, { 0x03, E_CAN2, DJIMotor::CURRENT }
 PID pit_speed(80, 0.5, 0, 16384, 10000);
 PID pit_angle(16, 0, 0, 210, 0);
 
-DMMotor b_yaw("gimbal_yaw_big", DMMotor::J4310, (DMMotor::Param) {
-    .slave_id = 0x06, .master_id = 0x05, .port = E_CAN3, .mode = DMMotor::MIT,
-    .p_max = 3.1415926535, .v_max = 30, .t_max = 10, .kp_max = 500, .kd_max = 5
-});
+DMMotor b_yaw("gimbal_yaw_big",
+              DMMotor::J4310,
+              (DMMotor::Param){ .slave_id  = 0x06,
+                                .master_id = 0x05,
+                                .port      = E_CAN3,
+                                .mode      = DMMotor::MIT,
+                                .p_max     = 3.1415926535,
+                                .v_max     = 30,
+                                .t_max     = 10,
+                                .kp_max    = 500,
+                                .kd_max    = 5 });
 PID b_yaw_speed(1.00, 0.0004, 0, 9, 4);
-PID b_yaw_angle(0.20, 0.00035, 0.0, 48, 36);//kp=0.22好像更好但是4310会震动，不知道目前0.20会不会震动
+PID b_yaw_angle(0.20, 0.00035, 0.0, 48, 36); //kp=0.22好像更好但是4310会震动，不知道目前0.20会不会震动
 
 
 //todo:调angle环的ki
 
-MotorController m_trigger(std::make_unique <DJIMotor>(
-    "trigger",
-    DJIMotor::M2006,
-    (DJIMotor::Param) {.id = 0x01,.port = E_CAN3,.mode = DJIMotor::CURRENT}
-));
+MotorController m_trigger(std::make_unique<DJIMotor>(
+    "trigger", DJIMotor::M2006, (DJIMotor::Param){ .id = 0x01, .port = E_CAN3, .mode = DJIMotor::CURRENT }));
 
-MotorController m_left_shoot(std::make_unique <DJIMotor>(
-    "left_shoot",
-    DJIMotor::M3508,
-    (DJIMotor::Param) {.id = 0x01,.port = E_CAN1,.mode = DJIMotor::CURRENT}
-));
+MotorController m_left_shoot(std::make_unique<DJIMotor>(
+    "left_shoot", DJIMotor::M3508, (DJIMotor::Param){ .id = 0x01, .port = E_CAN1, .mode = DJIMotor::CURRENT }));
 
-MotorController m_right_shoot(std::make_unique <DJIMotor>(
-    "right_shoot",
-    DJIMotor::M3508,
-    (DJIMotor::Param) {.id = 0x02,.port = E_CAN1,.mode = DJIMotor::CURRENT}
-));
+MotorController m_right_shoot(std::make_unique<DJIMotor>(
+    "right_shoot", DJIMotor::M3508, (DJIMotor::Param){ .id = 0x02, .port = E_CAN1, .mode = DJIMotor::CURRENT }));
 
 MovingAverageFilter vxFilter(20);
 MovingAverageFilter vyFilter(20);
 MovingAverageFilter rotateFilter(20);
 
 // 将编码器值(0~8191, 顺时针减小)转换为 [0,360) 角度，逆时针为正
-static inline double encoder_to_deg_ccw(int16_t enc, int16_t counts_per_rev)
-{
+static inline double encoder_to_deg_ccw(int16_t enc, int16_t counts_per_rev) {
     // 保护
-    if (counts_per_rev <= 0) return 0.0;
+    if(counts_per_rev <= 0) return 0.0;
 
     // 由于顺时针减少，这里先按绝对值映射到 [0,counts_per_rev)
     int32_t e = enc % counts_per_rev;
-    if (e < 0) e += counts_per_rev;
+    if(e < 0) e += counts_per_rev;
 
     // 以编码器数值递增为参考是顺时针，因此角度要取负号：
     //   enc 增加 -> 实际顺时针 -> 角度减小
-    double deg_cw = (double)e * 360.0 / (double)counts_per_rev;
-    double deg_ccw = -deg_cw;  // 逆时针为正
+    double deg_cw  = (double)e * 360.0 / (double)counts_per_rev;
+    double deg_ccw = -deg_cw; // 逆时针为正
 
     // 归一化到 [0,360)
-    while (deg_ccw < 0.0)   deg_ccw += 360.0;
-    while (deg_ccw >= 360.) deg_ccw -= 360.0;
+    while(deg_ccw < 0.0)
+        deg_ccw += 360.0;
+    while(deg_ccw >= 360.)
+        deg_ccw -= 360.0;
 
     return deg_ccw;
 }
@@ -101,10 +100,7 @@ static inline double encoder_to_deg_ccw(int16_t enc, int16_t counts_per_rev)
 // 把当前编码器值, 按给定 "中点编码器值" 作为 0°，输出 [-180,180) 角度
 // enc_now, enc_mid: int16_t 编码器读数(0~8191 或带符号溢出的原始值)
 // counts_per_rev: 8192
-double encoder_to_deg_mid_zero(int16_t enc_now,
-                               int16_t enc_mid,
-                               int16_t counts_per_rev)
-{
+double encoder_to_deg_mid_zero(int16_t enc_now, int16_t enc_mid, int16_t counts_per_rev) {
     // 1. 先把当前值和中点值都转成物理角度(逆时针为正, [0,360))
     double deg_now = encoder_to_deg_ccw(enc_now, counts_per_rev);
     double deg_mid = encoder_to_deg_ccw(enc_mid, counts_per_rev);
@@ -113,35 +109,36 @@ double encoder_to_deg_mid_zero(int16_t enc_now,
     double deg = deg_now - deg_mid;
 
     // 3. 归一化到 [-180,180)
-    while (deg < -180.0) deg += 360.0;
-    while (deg >= 180.0) deg -= 360.0;
+    while(deg < -180.0)
+        deg += 360.0;
+    while(deg >= 180.0)
+        deg -= 360.0;
 
-    return deg;   // 左转(逆时针)为正，右转(顺时针)为负
+    return deg; // 左转(逆时针)为正，右转(顺时针)为负
 }
 
 // 连续角度解包：输入当前 yaw(-180~+180)，输出连续角度
-double unwrap_yaw_deg(double yaw_now_deg)
-{
+double unwrap_yaw_deg(double yaw_now_deg) {
     // 静态变量保存上一次的 yaw 和累计角度
-    static bool   initialized = false;
-    static double last_yaw_deg = 0.0;   // 上一次原始 yaw(-180~180)
+    static bool initialized       = false;
+    static double last_yaw_deg    = 0.0; // 上一次原始 yaw(-180~180)
     static double total_angle_deg = 0.0; // 累计角度
 
-    if (!initialized) {
+    if(!initialized) {
         // 第一次调用时初始化
-        last_yaw_deg = yaw_now_deg;
-        total_angle_deg = yaw_now_deg;  // 也可以初始化为 0，看你需要
-        initialized = true;
+        last_yaw_deg    = yaw_now_deg;
+        total_angle_deg = yaw_now_deg; // 也可以初始化为 0，看你需要
+        initialized     = true;
         return total_angle_deg;
     }
 
     double delta = yaw_now_deg - last_yaw_deg;
 
     // 处理跨越 -180/180 边界的情况
-    if (delta > 180.0) {
+    if(delta > 180.0) {
         // 例：last = +179, now = -179 -> delta = -358 (实际 -2)
         delta -= 360.0;
-    } else if (delta < -180.0) {
+    } else if(delta < -180.0) {
         // 例：last = -179, now = +179 -> delta = +358 (实际 +2)
         delta += 360.0;
     }
@@ -154,10 +151,11 @@ double unwrap_yaw_deg(double yaw_now_deg)
 double yaw_unwrapped = 0.0;
 
 
-static inline float wrap_to_minus180_180(float angle_deg)
-{
-    while (angle_deg > 180.0f)  angle_deg -= 360.0f;
-    while (angle_deg <= -180.0f) angle_deg += 360.0f;
+static inline float wrap_to_minus180_180(float angle_deg) {
+    while(angle_deg > 180.0f)
+        angle_deg -= 360.0f;
+    while(angle_deg <= -180.0f)
+        angle_deg += 360.0f;
     return angle_deg;
 }
 float s_yaw_angle_err;
@@ -165,7 +163,7 @@ float s_yaw_angle_err;
 //串口发变量
 float target = 0;
 void set_target(bsp_uart_e e, uint8_t *s, uint16_t l) {
-    sscanf((char *) s, "%f", &target);
+    sscanf((char *)s, "%f", &target);
 }
 
 float s_yaw_target;
@@ -192,25 +190,25 @@ float chassis_vx;
 float chassis_vy;
 float chassis_rotate;
 
-int8_t lst_ctrl_mode = 0;
-float lst_s_yaw_pos = 0;
+int8_t lst_ctrl_mode   = 0;
+float lst_s_yaw_pos    = 0;
 
-const auto ins = app_ins_data();
-const auto rc = bsp_rc_data();
+const auto ins         = app_ins_data();
+const auto rc          = bsp_rc_data();
 
-vision::RecvPacket* vd = vision::recv();
+vision::RecvPacket *vd = vision::recv();
 
 //双板通信
 //收
-app_msg_can_receiver <app_msg_chassis_to_gimbal> chassis(E_CAN3, 0x044);
+app_msg_can_receiver<app_msg_chassis_to_gimbal> chassis(E_CAN3, 0x044);
 //发
 void send_msg_to_chassis() {
     app_msg_gimbal_to_chassis pkg = {
-        .s_yaw_pos_equally = s_yaw_enc_deg,
-        .vx = chassis_vx,
-        .vy = chassis_vy,
-        .rotate = chassis_rotate,
-        .b_yaw_pos = b_yaw.status.pos,
+        .s_yaw_pos_equally   = s_yaw_enc_deg,
+        .vx                  = chassis_vx,
+        .vy                  = chassis_vy,
+        .rotate              = chassis_rotate,
+        .b_yaw_pos           = b_yaw.status.pos,
         .chassis_power_limit = 100.0f,
         // .k_rotate = -0.000069,//中平移速度
         // .k_rotate = -0.000055,//高平移速度
@@ -234,28 +232,26 @@ void app_gimbal_task(void *args) {
     OS::Task::SleepMilliseconds(100);
     b_yaw.enable();
 
-    int pc_send = 0;
+    int pc_send     = 0;
     int8_t last_s_r = 0x7f;
 
     while(true) {
         // 上位机通信，10ms一次
         if(++pc_send == 2) {
-            pc_send = 0;
-            uint16_t bullet_count = 0;
+            pc_send            = 0;
             float bullet_speed = 20;
-            float pitch = ins->pitch / 180 * M_PI;
-            float pitch_vel = ins->raw.gyro[0];
-            float yaw = ins->yaw / 180 * M_PI;
-            float yaw_vel = ins->raw.gyro[2];
-            uint8_t is_start = 0;
-            uint16_t hp = 400;
+            float pitch        = ins->pitch / 180 * M_PI;
+            float pitch_vel    = ins->raw.gyro[0];
+            float yaw          = ins->yaw / 180 * M_PI;
+            float yaw_vel      = ins->raw.gyro[2];
+            uint8_t is_start   = 0;
+            uint16_t hp        = 400;
 
             vision::send(ins->q, yaw, yaw_vel, pitch, pitch_vel, bullet_speed, is_start, hp);
-
         }
 
         //双板通信
-        if(++ send_count == 10) {
+        if(++send_count == 10) {
             send_count = 0;
             send_msg_to_chassis();
         }
@@ -264,22 +260,22 @@ void app_gimbal_task(void *args) {
         if(bsp_time_get_ms() - rc->timestamp <= 50) {
             //切换模式提示音
             // 1\. 检测模式切换（只要 s_r 变化就触发一次）
-            if (rc->s_r != last_s_r) {
+            if(rc->s_r != last_s_r) {
                 last_s_r = rc->s_r;
 
                 // 2\. 根据新模式播放不同提示音
-                switch (rc->s_r) {
+                switch(rc->s_r) {
                 case -1:
                     // 失能/备用模式提示音 低音低频率
-                        app_sys_music_play(E_MUSIC_MODE1);
+                    app_sys_music_play(E_MUSIC_MODE1);
                     break;
                 case 0:
                     // 遥控器控制模式提示音
-                        app_sys_music_play(E_MUSIC_MODE2);
+                    app_sys_music_play(E_MUSIC_MODE2);
                     break;
                 case 1:
                     // 小电脑控制模式提示音 高音高频率
-                        app_sys_music_play(E_MUSIC_MODE3);
+                    app_sys_music_play(E_MUSIC_MODE3);
                     break;
                 default:
                     break;
@@ -289,22 +285,22 @@ void app_gimbal_task(void *args) {
             //选择控制源
             if(rc->s_r == 999) {
                 //失能,暂时不启用
-                trigger_speed = 0;
-                left_shoot_speed = 0;
+                trigger_speed     = 0;
+                left_shoot_speed  = 0;
                 right_shoot_speed = 0;
-                chassis_vx = 0;
-                chassis_vy = 0;
-                chassis_rotate = 0;
+                chassis_vx        = 0;
+                chassis_vy        = 0;
+                chassis_rotate    = 0;
 
-            }else if(rc->s_r == 0) {
+            } else if(rc->s_r == 0) {
                 //遥控器控制区
                 //云台控制
-                pit_target -= static_cast <float> (rc->rc_r[1]) * 0.0002f;
-                s_yaw_target -= static_cast <float> (rc->rc_r[0]) * 0.0006f;
+                pit_target -= static_cast<float>(rc->rc_r[1]) * 0.0002f;
+                s_yaw_target -= static_cast<float>(rc->rc_r[0]) * 0.0006f;
                 //底盘控制
-                chassis_vx = static_cast<float>(50.0*rc->rc_l[0]);
-                chassis_vy = static_cast<float>(50.0*rc->rc_l[1]);
-                chassis_rotate = static_cast<float>(10.0*rc->reserved);
+                chassis_vx     = static_cast<float>(50.0 * rc->rc_l[0]);
+                chassis_vy     = static_cast<float>(50.0 * rc->rc_l[1]);
+                chassis_rotate = static_cast<float>(10.0 * rc->reserved);
                 // chassis_vx = static_cast<float>(vxFilter.update(50.0*rc->rc_l[0])) ;
                 // chassis_vy = static_cast<float>(vyFilter.update(50.0*rc->rc_l[1])) ;
                 // chassis_rotate = static_cast<float>(rotateFilter.update(10.0*rc->reserved)) ;
@@ -312,85 +308,84 @@ void app_gimbal_task(void *args) {
                 //射击控制
                 if(rc->s_l == 0) {
                     //不射击
-                    trigger_speed = 0;
-                    left_shoot_speed = 0;
+                    trigger_speed     = 0;
+                    left_shoot_speed  = 0;
                     right_shoot_speed = 0;
-                }else if(rc->s_l == 1) {
+                } else if(rc->s_l == 1) {
                     //低速射击
-                    trigger_speed = -1500;
-                    left_shoot_speed = 6000;
+                    trigger_speed     = -1500;
+                    left_shoot_speed  = 6000;
                     right_shoot_speed = -6000;
-                }else if(rc->s_l == -1) {
+                } else if(rc->s_l == -1) {
                     //高速射击
-                    trigger_speed = -4500;
-                    left_shoot_speed = 6000;
+                    trigger_speed     = -4500;
+                    left_shoot_speed  = 6000;
                     right_shoot_speed = -6000;
                 }
 
-            }else if(rc->s_r == 1 or rc->s_r == -1) {
+            } else if(rc->s_r == 1 or rc->s_r == -1) {
                 //小电脑控制区
                 //小电脑数据离线检测
                 if(bsp_time_get_ms() - vision::last_update_time() <= 100) {
                     //确认瞄准后再移动云台
                     if(vd->mode == 1 or vd->mode == 2) {
                         //云台控制
-                        pit_target = static_cast<float>(vd->pitch * 180.0 / M_PI);
+                        pit_target   = static_cast<float>(vd->pitch * 180.0 / M_PI);
                         s_yaw_target = static_cast<float>(vd->yaw * 180.0 / M_PI);
                         //确认射击指令后再射击
                         //todo:加低通滤波
                         if(vd->mode == 2 and rc->s_l == 1) {
-                        // if(rc->s_l == 1) {
+                            // if(rc->s_l == 1) {
                             //自瞄允许发弹且遥控器允许发弹时控制发弹
-                            trigger_speed = -1000;
-                            left_shoot_speed = 6000;
+                            trigger_speed     = -1000;
+                            left_shoot_speed  = 6000;
                             right_shoot_speed = -6000;
-                        }else {
-                            trigger_speed = 0;
-                            left_shoot_speed = 6000;
+                        } else {
+                            trigger_speed     = 0;
+                            left_shoot_speed  = 6000;
                             right_shoot_speed = -6000;
                         }
-                    }else {
+                    } else {
                         //云台传自瞄状态0，此时云台Yyp不控制，发射机构速度置为0
-                        trigger_speed = 0;
-                        left_shoot_speed = 6000;
+                        trigger_speed     = 0;
+                        left_shoot_speed  = 6000;
                         right_shoot_speed = -6000;
                     }
                     //底盘控制部分，目前没有接口，速度从遥控器获取，有导航之后可以等于导航速度
-                    chassis_vx = 15000*vd->nav_x;
-                    chassis_vy = 15000*vd->nav_y;
+                    chassis_vx     = 15000 * vd->nav_x;
+                    chassis_vy     = 15000 * vd->nav_y;
                     chassis_rotate = 0.0f;
                     // chassis_vx = static_cast<float>(vxFilter.update(15000 * vd->vx)) ;
                     // chassis_vy = static_cast<float>(vyFilter.update(15000 * vd->vx)) ;
 
 
-                }else {
+                } else {
                     //小电脑通信离线，云台Yyp不控制，底盘速度和发射机构速度置为0
                     //todo：把这个测试的改成失能
-                    chassis_vx = static_cast<float>(50.0*rc->rc_l[0]);
-                    chassis_vy = static_cast<float>(50.0*rc->rc_l[1]);
-                    chassis_rotate = static_cast<float>(10.0*rc->reserved);
+                    chassis_vx     = static_cast<float>(50.0 * rc->rc_l[0]);
+                    chassis_vy     = static_cast<float>(50.0 * rc->rc_l[1]);
+                    chassis_rotate = static_cast<float>(10.0 * rc->reserved);
 
                     // chassis_vx = 0;
                     // chassis_vy = 0;
                     // chassis_rotate = 0;
-                    trigger_speed = 0;
-                    left_shoot_speed = 0;
+                    trigger_speed     = 0;
+                    left_shoot_speed  = 0;
                     right_shoot_speed = 0;
                 }
-
             }
-        }else {
+        } else {
             //安全控制器离线:失能,Yyp位置不控制(维持原位)，xy速度和shooter速度置为0,
-            trigger_speed = 0;
-            left_shoot_speed = 0;
+            trigger_speed     = 0;
+            left_shoot_speed  = 0;
             right_shoot_speed = 0;
-            chassis_vx = 0;
-            chassis_vy = 0;
-            chassis_rotate = 0;
+            chassis_vx        = 0;
+            chassis_vy        = 0;
+            chassis_rotate    = 0;
         }
 
 
-//todo:上场前关闭所有遥控器离线检测
+        //todo:上场前关闭所有遥控器离线检测
         //电机控制区,通过不同条件选择进入 小yaw扫描pid//大yaw跟小yaw控制pid 两种控制模式
         if(rc->s_r == 1 and vd->mode == 0 and bsp_time_get_ms() - rc->timestamp <= 50) {
             // 扫描控制区,当遥控器切换为小电脑控制且自瞄发送未识别到时进入此模式
@@ -402,21 +397,20 @@ void app_gimbal_task(void *args) {
                 if(pit_target >= 25) {
                     pit_towards_flag = 1;
                 }
-            }
-            else {
+            } else {
                 pit_target -= 0.12f;
                 if(pit_target <= -15) {
                     pit_towards_flag = 0;
                 }
             }
             //pitch限位
-            if (pit_target < -15) pit_target = -15;
-            if (pit_target > 25) pit_target = 25;
+            if(pit_target < -15) pit_target = -15;
+            if(pit_target > 25) pit_target = 25;
             pit_current = ins->roll;
             //pit轴控制
             pit_output = pit_target;
             pit_output = pit_angle.update((pit_current), (pit_output));
-            pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
+            pit_output = pit_speed.update(static_cast<float>(ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
             pit.update((pit_output));
 
             //小yaw扫描
@@ -425,26 +419,25 @@ void app_gimbal_task(void *args) {
                 if(s_yaw_target >= 50) {
                     s_yaw_towards_flag = 1;
                 }
-            }
-            else {
+            } else {
                 s_yaw_target -= 0.12f;
                 if(s_yaw_target <= -50) {
                     s_yaw_towards_flag = 0;
                 }
             }
             //yaw限位
-            if (s_yaw_target < -50) s_yaw_target = -50;
-            if (s_yaw_target > 50) s_yaw_target = 50;
+            if(s_yaw_target < -50) s_yaw_target = -50;
+            if(s_yaw_target > 50) s_yaw_target = 50;
             s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 3423, 8192));
             s_yaw_current = -s_yaw_enc_deg;
-            s_yaw_output = s_yaw_target;
-            s_yaw_output = s_yaw_angle.update(s_yaw_current, s_yaw_output);
-            s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output));
+            s_yaw_output  = s_yaw_target;
+            s_yaw_output  = s_yaw_angle.update(s_yaw_current, s_yaw_output);
+            s_yaw_output  = s_yaw_speed.update(-static_cast<float>(ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output));
             s_yaw.update((s_yaw_output));
 
             // 大yaw转动
             //rotate速度测试时给的是-6600
-                b_yaw_target = 2.0 - 0.0010 * chassis_rotate;
+            b_yaw_target = 2.0 - 0.0010 * chassis_rotate;
             // }
             b_yaw_current = b_yaw.status.vel;
             //重新使能
@@ -454,26 +447,26 @@ void app_gimbal_task(void *args) {
             }
             b_yaw_output = b_yaw_target;
             b_yaw_output = b_yaw_speed.update((b_yaw.status.vel), (b_yaw_output));
-            b_yaw.control(0,0,0,0,(b_yaw_output));
+            b_yaw.control(0, 0, 0, 0, (b_yaw_output));
             //测试，发空包,为了得到反馈数据,取消注释这个时 把上面含死区的控制注释掉
             // b_yaw.control(0,0,0,0,0);//发空包
 
             lst_ctrl_mode = -1;
             lst_s_yaw_pos = ins->yaw;
-        }else {
+        } else {
             // 云台跟随控制区,除了上面情况之外都进入此模式
             if(lst_ctrl_mode == -1) {
-                s_yaw_target = ins->yaw ;
+                s_yaw_target  = ins->yaw;
                 lst_ctrl_mode = 0;
             }
             //pit轴控制量设置
-            if (pit_target < -5) pit_target = -5;//pitch限位
-            if (pit_target > 25) pit_target = 25;
+            if(pit_target < -5) pit_target = -5; //pitch限位
+            if(pit_target > 25) pit_target = 25;
             pit_current = ins->roll;
             //pit轴控制
             pit_output = pit_target;
             pit_output = pit_angle.update((pit_current), (pit_output));
-            pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
+            pit_output = pit_speed.update(static_cast<float>(ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
             // pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), pit_target = static_cast <float> (rc->rc_r[1]) * 1.0f);
             pit.update((pit_output));
 
@@ -482,19 +475,23 @@ void app_gimbal_task(void *args) {
             //小yaw轴控制量设置
             s_yaw_current = static_cast<float>(yaw_unwrapped);
             //小yaw轴控制
-            s_yaw_output = s_yaw_target;
-            s_yaw_angle_err = s_yaw_output - s_yaw_current;//规划最短路径
+            s_yaw_output    = s_yaw_target;
+            s_yaw_angle_err = s_yaw_output - s_yaw_current; //规划最短路径
             s_yaw_angle_err = wrap_to_minus180_180(s_yaw_angle_err);
-            s_yaw_output = s_yaw_angle.update((0.0), (s_yaw_angle_err));
-            s_yaw_output = s_yaw_speed.update(-static_cast <float> (ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output + s_yaw_angle_err *0.05f + b_yaw.status.vel * 0.8f));
-            s_yaw.update((s_yaw_output ));
+            s_yaw_output    = s_yaw_angle.update((0.0), (s_yaw_angle_err));
+            s_yaw_output    = s_yaw_speed.update(-static_cast<float>(ins->raw.gyro[2] * 180.0 / M_PI),
+                                              (s_yaw_output + s_yaw_angle_err * 0.05f + b_yaw.status.vel * 0.8f));
+            s_yaw.update((s_yaw_output));
             //大yaw状态量设置
-            s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 3423, 8192));//小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
+            s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(
+                s_yaw.feedback_.angle,
+                3423,
+                8192)); //小yaw编码器范围:中心点700，从左限位到到右限位1816,1815.....2,1,0,8192,8191,...,7951,7950
             //大yaw控制量设置
             b_yaw_target = 0;
             if(bsp_time_get_ms() - s_yaw.status.last_online_time <= 50) {
                 b_yaw_current = s_yaw_enc_deg;
-            }else {
+            } else {
                 b_yaw_current = 0;
             }
 
@@ -504,25 +501,22 @@ void app_gimbal_task(void *args) {
                 b_yaw.enable();
             }
             //含死区的控制：
-            if(abs(b_yaw_current)<0.0) {
+            if(abs(b_yaw_current) < 0.0) {
                 //此时进入死区,不更新pid，并且发空包.如果你设置小于0则不启用死区
-                b_yaw.control(0,0,0,0,0);
-            }else {
+                b_yaw.control(0, 0, 0, 0, 0);
+            } else {
                 //出死区了，继续更新pid并控制
                 //大yaw轴更新pid
                 b_yaw_output = b_yaw_target;
                 b_yaw_output = b_yaw_angle.update((-b_yaw_current), (b_yaw_output));
                 b_yaw_output = b_yaw_speed.update((b_yaw.status.vel), (b_yaw_output + 0.00f * s_yaw_enc_deg));
                 //控制，正对应顺时针转
-                b_yaw.control(0,0,0,0,(b_yaw_output + -0.0000f * chassis_rotate));
+                b_yaw.control(0, 0, 0, 0, (b_yaw_output + -0.0000f * chassis_rotate));
             }
             // //测试，发空包,为了得到反馈数据,取消注释这个时 把上面含死区的控制注释掉
             // b_yaw.control(0,0,0,0,0);//发空包
             lst_ctrl_mode = 0;
         }
-
-
-
 
 
         //发射机构控制
@@ -531,81 +525,80 @@ void app_gimbal_task(void *args) {
         m_right_shoot.update(right_shoot_speed);
 
 
-
         //调试区
         app_msg_vofa_send(E_UART_DEBUG,
-            // pit.status.angle,
-            // pit.status.speed,
-            // ins->roll,
-            // ins->raw.gyro[0],
-            // rc->rc_r[1],
-            // pit_target,
-            // pit_current,
-            // static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI),
-            // pit_output,
+                          // pit.status.angle,
+                          // pit.status.speed,
+                          // ins->roll,
+                          // ins->raw.gyro[0],
+                          // rc->rc_r[1],
+                          // pit_target,
+                          // pit_current,
+                          // static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI),
+                          // pit_output,
 
-            s_yaw.status.speed/6.0,//rpm
-            ins->raw.gyro[2],
-            s_yaw.status.speed/6.0 + ins->raw.gyro[2],
-            // ins->yaw,
-            // ins->raw.gyro[2],
-            // rc->rc_r[0],
-            // s_yaw_target,
-            // s_yaw_current,
-            // s_yaw_output,
+                          s_yaw.status.speed / 6.0, //rpm
+                          ins->raw.gyro[2],
+                          s_yaw.status.speed / 6.0 + ins->raw.gyro[2],
+                          // ins->yaw,
+                          // ins->raw.gyro[2],
+                          // rc->rc_r[0],
+                          // s_yaw_target,
+                          // s_yaw_current,
+                          // s_yaw_output,
 
-            // s_yaw_enc_deg,
-            // b_yaw_real_speed,
-            // b_yaw.status.vel,
-            // b_yaw_target,
-            // b_yaw_current,
-            // b_yaw_output,
-            // -0.000f * chassis_rotate,
-            // 0.001f *s_yaw.status.speed,
-            // 0.005 * s_yaw_enc_deg
-            // static_cast <float> (rc->rc_r[0]),
-            // ins->yaw,
-            // s_yaw.feedback_.angle,
-            // yaw_unwrapped,
-            // b_yaw.status.vel,
+                          // s_yaw_enc_deg,
+                          // b_yaw_real_speed,
+                          // b_yaw.status.vel,
+                          // b_yaw_target,
+                          // b_yaw_current,
+                          // b_yaw_output,
+                          // -0.000f * chassis_rotate,
+                          // 0.001f *s_yaw.status.speed,
+                          // 0.005 * s_yaw_enc_deg
+                          // static_cast <float> (rc->rc_r[0]),
+                          // ins->yaw,
+                          // s_yaw.feedback_.angle,
+                          // yaw_unwrapped,
+                          // b_yaw.status.vel,
 
 
-            // m_trigger.device()->angle,
-            // m_left_shoot.device()->speed,
-            // m_right_shoot.device()->speed
+                          // m_trigger.device()->angle,
+                          // m_left_shoot.device()->speed,
+                          // m_right_shoot.device()->speed
 
-            // chassis()->robot_id,
-            // chassis()->robot_level
-            // static_cast<float>(rc->rc_l[0]),
-            // static_cast<float>(rc->rc_l[1]),
-            // static_cast<float>(rc->reserved),
-            // chassis.timestamp,
-            // b_yaw.feedback_.pos
+                          // chassis()->robot_id,
+                          // chassis()->robot_level
+                          // static_cast<float>(rc->rc_l[0]),
+                          // static_cast<float>(rc->rc_l[1]),
+                          // static_cast<float>(rc->reserved),
+                          // chassis.timestamp,
+                          // b_yaw.feedback_.pos
 
-            // vd->mode,
-            // vd->pitch*180/M_PI,
-            // ins->roll,
-            // vd->yaw*180/M_PI,
-            // unwrap_yaw_deg(ins->yaw),
+                          // vd->mode,
+                          // vd->pitch*180/M_PI,
+                          // ins->roll,
+                          // vd->yaw*180/M_PI,
+                          // unwrap_yaw_deg(ins->yaw),
 
-            // vision::last_update_time(),
-            // bsp_time_get_ms(),
-            // m_left_shoot.device()->speed,
-            // m_right_shoot.device()->speed,
-            // m_trigger.device()->speed
+                          // vision::last_update_time(),
+                          // bsp_time_get_ms(),
+                          // m_left_shoot.device()->speed,
+                          // m_right_shoot.device()->speed,
+                          // m_trigger.device()->speed
 
-            // vd->vx,
-            // vd->vy,
-            // chassis_vx,
-            // chassis_vy,
-            chassis_rotate
+                          // vd->vx,
+                          // vd->vy,
+                          // chassis_vx,
+                          // chassis_vy,
+                          chassis_rotate
 
-            // s_yaw.status.current,
-            // b_yaw.status.vel,
-            // pit.status.current,
+                          // s_yaw.status.current,
+                          // b_yaw.status.vel,
+                          // pit.status.current,
 
-            // m_right_shoot.device()
-            // m_trigger.device()->current
+                          // m_right_shoot.device()
+                          // m_trigger.device()->current
 
         );
 
@@ -619,27 +612,17 @@ void app_gimbal_init() {
     pit.init();
     vision::init();
 
-    m_trigger.add_controller(std::make_unique <Controller::MotorBasePID> (
-        Controller::MotorBasePID::PID_SPEED,
-        std::make_unique <Controller::PID> (10.0, 1.0, 0.0, 16384, 10000),
-        nullptr
-    ));
+    m_trigger.add_controller(std::make_unique<Controller::MotorBasePID>(
+        Controller::MotorBasePID::PID_SPEED, std::make_unique<Controller::PID>(10.0, 1.0, 0.0, 16384, 10000), nullptr));
     m_trigger.init();
 
-    m_left_shoot.add_controller(std::make_unique <Controller::MotorBasePID> (
-        Controller::MotorBasePID::PID_SPEED,
-        std::make_unique <Controller::PID> (15.0, 1.0, 0.0, 16384, 10000),
-        nullptr
-    ));
+    m_left_shoot.add_controller(std::make_unique<Controller::MotorBasePID>(
+        Controller::MotorBasePID::PID_SPEED, std::make_unique<Controller::PID>(15.0, 1.0, 0.0, 16384, 10000), nullptr));
     m_left_shoot.init();
 
-    m_right_shoot.add_controller(std::make_unique <Controller::MotorBasePID> (
-        Controller::MotorBasePID::PID_SPEED,
-        std::make_unique <Controller::PID> (15.0, 1.0, 0.0, 16384, 10000),
-        nullptr
-    ));
+    m_right_shoot.add_controller(std::make_unique<Controller::MotorBasePID>(
+        Controller::MotorBasePID::PID_SPEED, std::make_unique<Controller::PID>(15.0, 1.0, 0.0, 16384, 10000), nullptr));
     m_right_shoot.init();
-
 }
 
 #endif
