@@ -474,9 +474,6 @@ void app_gimbal_task(void *args) {
                 b_yaw_target = 2.0;
             }
 
-
-
-
             b_yaw_current = b_yaw.status.vel;
             //重新使能
             if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
@@ -552,7 +549,7 @@ void app_gimbal_task(void *args) {
                 b_yaw.enable();
             }
 
-            if(b_yaw_online_flag == 1) {
+            if(b_yaw_online_flag == 1 and s_yaw_online_flag == 1) {
                     //含死区的控制：
                 if(abs(b_yaw_current) < 0.0) {
                     //此时进入死区,不更新pid，并且发空包.如果你设置小于0则不启用死区
