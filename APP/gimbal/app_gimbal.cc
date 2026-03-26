@@ -348,7 +348,7 @@ void app_gimbal_task(void *args) {
                     right_shoot_speed = -6000;
                 }
 
-            } else if(rc->s_r == 1) {
+            } else if(rc->s_r == 1 or rc->s_r == -1) {
                 //小电脑控制区
                 //小电脑数据离线检测
                 if(bsp_time_get_ms() - vision::last_update_time() <= 100) {
