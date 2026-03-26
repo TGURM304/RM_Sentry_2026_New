@@ -283,7 +283,7 @@ void app_gimbal_task(void *args) {
             }
 
             //选择控制源
-            if(rc->s_r == 999) {
+            if(rc->s_r == -1) {
                 //失能,暂时不启用
                 trigger_speed     = 0;
                 left_shoot_speed  = 0;
@@ -323,7 +323,7 @@ void app_gimbal_task(void *args) {
                     right_shoot_speed = -6000;
                 }
 
-            } else if(rc->s_r == 1 or rc->s_r == -1) {
+            } else if(rc->s_r == 1) {
                 //小电脑控制区
                 //小电脑数据离线检测
                 if(bsp_time_get_ms() - vision::last_update_time() <= 100) {
@@ -333,7 +333,6 @@ void app_gimbal_task(void *args) {
                         pit_target   = static_cast<float>(vd->pitch * 180.0 / M_PI);
                         s_yaw_target = static_cast<float>(vd->yaw * 180.0 / M_PI);
                         //确认射击指令后再射击
-                        //todo:加低通滤波
                         if(vd->mode == 2 and rc->s_l == 1) {
                             // if(rc->s_l == 1) {
                             //自瞄允许发弹且遥控器允许发弹时控制发弹
