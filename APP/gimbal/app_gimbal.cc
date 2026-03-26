@@ -244,8 +244,8 @@ void app_gimbal_task(void *args) {
             float pitch_vel    = ins->raw.gyro[0];
             float yaw          = ins->yaw / 180 * M_PI;
             float yaw_vel      = ins->raw.gyro[2];
-            uint8_t is_start   = 0;
-            uint16_t hp        = 400;
+            uint8_t is_start   = chassis()->game_state;
+            uint16_t hp        = chassis()->robot_hp;
 
             vision::send(ins->q, yaw, yaw_vel, pitch, pitch_vel, bullet_speed, is_start, hp);
         }

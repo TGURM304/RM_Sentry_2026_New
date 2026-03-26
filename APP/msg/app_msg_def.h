@@ -18,6 +18,8 @@ struct app_msg_gimbal_to_chassis {
 
 struct app_msg_chassis_to_gimbal {
     uint8_t robot_id, robot_level;
+    uint16_t robot_hp;
+    uint8_t game_state;
 
 } __attribute__((packed));
 

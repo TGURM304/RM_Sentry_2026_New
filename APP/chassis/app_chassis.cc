@@ -212,7 +212,10 @@ app_msg_can_receiver <app_msg_gimbal_to_chassis> gimbal(E_CAN3, 0x036);
 void send_msg_to_gimbal() {
     app_msg_chassis_to_gimbal pkg = {
         .robot_id = 1,
-        .robot_level = 110
+        .robot_level = 110,
+        .robot_hp = basic::data()->robot_status.current_hp,
+        .game_state = basic::data()->game_status.game_progress
+
     };
     app_msg_can_send(E_CAN3, 0x044, pkg);
 }
