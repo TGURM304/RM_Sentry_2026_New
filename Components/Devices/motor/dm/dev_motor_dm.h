@@ -39,6 +39,7 @@ namespace Motor {
         struct Status {
             uint8_t err;
             float pos, vel, torque, t_mos, t_rotor;
+            uint32_t last_online_time;
         };
 
         struct Feedback {

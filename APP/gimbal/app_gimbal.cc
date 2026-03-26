@@ -56,7 +56,7 @@ DMMotor b_yaw("gimbal_yaw_big",
                                 .kp_max    = 500,
                                 .kd_max    = 5 });
 PID b_yaw_speed(1.00, 0.0004, 0, 9, 4);
-PID b_yaw_angle(0.20, 0.00035, 0.0, 48, 36); //kp=0.22好像更好但是4310会震动，不知道目前0.20会不会震动
+PID b_yaw_angle(0.22, 0.00035, 0.0, 48, 36); //kp=0.22好像更好但是4310会震动，不知道目前0.20会不会震动
 
 
 //todo:调angle环的ki
@@ -190,6 +190,10 @@ float chassis_vx;
 float chassis_vy;
 float chassis_rotate;
 
+uint8_t s_yaw_online_flag = 0;//0为离线1为在线
+uint8_t b_yaw_online_flag = 0;
+uint8_t pit_online_flag = 0;
+
 int8_t lst_ctrl_mode   = 0;
 float lst_s_yaw_pos    = 0;
 
@@ -256,6 +260,27 @@ void app_gimbal_task(void *args) {
             send_msg_to_chassis();
         }
 
+        //电机状态标志位
+        if(bsp_time_get_ms() - s_yaw.status.last_online_time <= 100) {
+            s_yaw_online_flag = 1;
+        }else {
+            s_yaw_online_flag = 0;
+        }
+        if(bsp_time_get_ms() - b_yaw.status.last_online_time <= 100) {
+            b_yaw_online_flag = 1;
+        }else {
+            b_yaw_online_flag = 0;
+            b_yaw.reset();
+            b_yaw.enable();
+            b_yaw.control(0, 0, 0, 0, 0);
+        }
+        if(bsp_time_get_ms() - pit.status.last_online_time <= 100) {
+            pit_online_flag = 1;
+        }else {
+            pit_online_flag = 0;
+        }
+
+
         //控制逻辑区，遥控器作为安全控制器和控制源选择器
         if(bsp_time_get_ms() - rc->timestamp <= 50) {
             //切换模式提示音
@@ -283,7 +308,7 @@ void app_gimbal_task(void *args) {
             }
 
             //选择控制源
-            if(rc->s_r == -1) {
+            if(rc->s_r == -99) {
                 //失能,暂时不启用
                 trigger_speed     = 0;
                 left_shoot_speed  = 0;
@@ -406,11 +431,15 @@ void app_gimbal_task(void *args) {
             if(pit_target < -15) pit_target = -15;
             if(pit_target > 25) pit_target = 25;
             pit_current = ins->roll;
-            //pit轴控制
             pit_output = pit_target;
-            pit_output = pit_angle.update((pit_current), (pit_output));
-            pit_output = pit_speed.update(static_cast<float>(ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
-            pit.update((pit_output));
+
+            if(pit_online_flag ==1) {
+                //pit轴控制
+                pit_output = pit_angle.update((pit_current), (pit_output));
+                pit_output = pit_speed.update(static_cast<float>(ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
+                pit.update((pit_output));
+            }
+
 
             //小yaw扫描
             if(s_yaw_towards_flag == 0) {
@@ -430,23 +459,37 @@ void app_gimbal_task(void *args) {
             s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(s_yaw.feedback_.angle, 3423, 8192));
             s_yaw_current = -s_yaw_enc_deg;
             s_yaw_output  = s_yaw_target;
-            s_yaw_output  = s_yaw_angle.update(s_yaw_current, s_yaw_output);
-            s_yaw_output  = s_yaw_speed.update(-static_cast<float>(ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output));
-            s_yaw.update((s_yaw_output));
 
-            // 大yaw转动
-            //rotate速度测试时给的是-6600
-            b_yaw_target = 2.0 - 0.0010 * chassis_rotate;
-            // }
+            if(s_yaw_online_flag == 1) {
+                s_yaw_output  = s_yaw_angle.update(s_yaw_current, s_yaw_output);
+                s_yaw_output  = s_yaw_speed.update(-static_cast<float>(ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output));
+                s_yaw.update((s_yaw_output));
+            }
+
+            if(chassis()->chassis_all_motor_ready_flag ==1) {
+                // 大yaw转动
+                //rotate速度测试时给的是-6600
+                b_yaw_target = 2.0 - 0.0010 * chassis_rotate;
+            }else {
+                b_yaw_target = 2.0;
+            }
+
+
+
+
             b_yaw_current = b_yaw.status.vel;
             //重新使能
             if(b_yaw.status.err == 0 || b_yaw.status.err == 0xD) {
                 b_yaw.reset();
                 b_yaw.enable();
             }
-            b_yaw_output = b_yaw_target;
-            b_yaw_output = b_yaw_speed.update((b_yaw.status.vel), (b_yaw_output));
-            b_yaw.control(0, 0, 0, 0, (b_yaw_output));
+
+            if(b_yaw_online_flag == 1) {
+                b_yaw_output = b_yaw_target;
+                b_yaw_output = b_yaw_speed.update((b_yaw.status.vel), (b_yaw_output));
+                b_yaw.control(0, 0, 0, 0, (b_yaw_output));
+            }
+
             //测试，发空包,为了得到反馈数据,取消注释这个时 把上面含死区的控制注释掉
             // b_yaw.control(0,0,0,0,0);//发空包
 
@@ -462,12 +505,15 @@ void app_gimbal_task(void *args) {
             if(pit_target < -5) pit_target = -5; //pitch限位
             if(pit_target > 25) pit_target = 25;
             pit_current = ins->roll;
-            //pit轴控制
             pit_output = pit_target;
-            pit_output = pit_angle.update((pit_current), (pit_output));
-            pit_output = pit_speed.update(static_cast<float>(ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
-            // pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), pit_target = static_cast <float> (rc->rc_r[1]) * 1.0f);
-            pit.update((pit_output));
+            if(pit_online_flag == 1) {
+                //pit轴控制
+                pit_output = pit_angle.update((pit_current), (pit_output));
+                pit_output = pit_speed.update(static_cast<float>(ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
+                // pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), pit_target = static_cast <float> (rc->rc_r[1]) * 1.0f);
+                pit.update((pit_output));
+            }
+
 
             //小yaw轴状态量设置
             yaw_unwrapped = unwrap_yaw_deg(ins->yaw);
@@ -477,10 +523,16 @@ void app_gimbal_task(void *args) {
             s_yaw_output    = s_yaw_target;
             s_yaw_angle_err = s_yaw_output - s_yaw_current; //规划最短路径
             s_yaw_angle_err = wrap_to_minus180_180(s_yaw_angle_err);
-            s_yaw_output    = s_yaw_angle.update((0.0), (s_yaw_angle_err));
-            s_yaw_output    = s_yaw_speed.update(-static_cast<float>(ins->raw.gyro[2] * 180.0 / M_PI),
-                                              (s_yaw_output + s_yaw_angle_err * 0.05f + b_yaw.status.vel * 0.8f));
-            s_yaw.update((s_yaw_output));
+
+            if(s_yaw_online_flag == 1) {
+                s_yaw_output    = s_yaw_angle.update((0.0), (s_yaw_angle_err));
+                s_yaw_output    = s_yaw_speed.update(-static_cast<float>(ins->raw.gyro[2] * 180.0 / M_PI),
+                                                  (s_yaw_output + s_yaw_angle_err * 0.05f + b_yaw.status.vel * 0.8f));
+                s_yaw.update((s_yaw_output));
+            }
+
+
+
             //大yaw状态量设置
             s_yaw_enc_deg = static_cast<float>(encoder_to_deg_mid_zero(
                 s_yaw.feedback_.angle,
@@ -499,19 +551,24 @@ void app_gimbal_task(void *args) {
                 b_yaw.reset();
                 b_yaw.enable();
             }
-            //含死区的控制：
-            if(abs(b_yaw_current) < 0.0) {
-                //此时进入死区,不更新pid，并且发空包.如果你设置小于0则不启用死区
-                b_yaw.control(0, 0, 0, 0, 0);
-            } else {
-                //出死区了，继续更新pid并控制
-                //大yaw轴更新pid
-                b_yaw_output = b_yaw_target;
-                b_yaw_output = b_yaw_angle.update((-b_yaw_current), (b_yaw_output));
-                b_yaw_output = b_yaw_speed.update((b_yaw.status.vel), (b_yaw_output + 0.00f * s_yaw_enc_deg));
-                //控制，正对应顺时针转
-                b_yaw.control(0, 0, 0, 0, (b_yaw_output + -0.0000f * chassis_rotate));
+
+            if(b_yaw_online_flag == 1) {
+                    //含死区的控制：
+                if(abs(b_yaw_current) < 0.0) {
+                    //此时进入死区,不更新pid，并且发空包.如果你设置小于0则不启用死区
+                    b_yaw.control(0, 0, 0, 0, 0);
+                } else {
+                    //出死区了，继续更新pid并控制
+                    //大yaw轴更新pid
+                    b_yaw_output = b_yaw_target;
+                    b_yaw_output = b_yaw_angle.update((-b_yaw_current), (b_yaw_output));
+                    b_yaw_output = b_yaw_speed.update((b_yaw.status.vel), (b_yaw_output + 0.00f * s_yaw_enc_deg));
+                    //控制，正对应顺时针转
+                    b_yaw.control(0, 0, 0, 0, (b_yaw_output + -0.0000f * chassis_rotate));
+                }
             }
+
+
             // //测试，发空包,为了得到反馈数据,取消注释这个时 把上面含死区的控制注释掉
             // b_yaw.control(0,0,0,0,0);//发空包
             lst_ctrl_mode = 0;
@@ -526,78 +583,15 @@ void app_gimbal_task(void *args) {
 
         //调试区
         app_msg_vofa_send(E_UART_DEBUG,
-                          // pit.status.angle,
-                          // pit.status.speed,
-                          // ins->roll,
-                          // ins->raw.gyro[0],
-                          // rc->rc_r[1],
-                          // pit_target,
-                          // pit_current,
-                          // static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI),
-                          // pit_output,
 
-                          s_yaw.status.speed / 6.0, //rpm
-                          ins->raw.gyro[2],
-                          s_yaw.status.speed / 6.0 + ins->raw.gyro[2],
-                          // ins->yaw,
-                          // ins->raw.gyro[2],
-                          // rc->rc_r[0],
-                          // s_yaw_target,
-                          // s_yaw_current,
-                          // s_yaw_output,
-
-                          // s_yaw_enc_deg,
-                          // b_yaw_real_speed,
-                          // b_yaw.status.vel,
-                          // b_yaw_target,
-                          // b_yaw_current,
-                          // b_yaw_output,
-                          // -0.000f * chassis_rotate,
-                          // 0.001f *s_yaw.status.speed,
-                          // 0.005 * s_yaw_enc_deg
-                          // static_cast <float> (rc->rc_r[0]),
-                          // ins->yaw,
-                          // s_yaw.feedback_.angle,
-                          // yaw_unwrapped,
-                          // b_yaw.status.vel,
-
-
-                          // m_trigger.device()->angle,
-                          // m_left_shoot.device()->speed,
-                          // m_right_shoot.device()->speed
-
-                          // chassis()->robot_id,
-                          // chassis()->robot_level
-                          // static_cast<float>(rc->rc_l[0]),
-                          // static_cast<float>(rc->rc_l[1]),
-                          // static_cast<float>(rc->reserved),
-                          // chassis.timestamp,
-                          // b_yaw.feedback_.pos
-
-                          // vd->mode,
-                          // vd->pitch*180/M_PI,
-                          // ins->roll,
-                          // vd->yaw*180/M_PI,
-                          // unwrap_yaw_deg(ins->yaw),
-
-                          // vision::last_update_time(),
-                          // bsp_time_get_ms(),
-                          // m_left_shoot.device()->speed,
-                          // m_right_shoot.device()->speed,
-                          // m_trigger.device()->speed
-
-                          // vd->vx,
-                          // vd->vy,
-                          // chassis_vx,
-                          // chassis_vy,
-                          chassis_rotate
-
-                          // s_yaw.status.current,
-                          // b_yaw.status.vel,
-                          // pit.status.current,
-
-                          // m_right_shoot.device()
-                          // m_trigger.device()->current
+                          chassis()->robot_hp,
+                          chassis()->game_state,
+                          chassis()->shooter_heat,
+                          chassis()->shooter_heat_limit,
+                          chassis()->shooter_heat_ps,
+                          chassis()->robot_allow_armor,
+                          b_yaw.status.vel,
+                          b_yaw.status.pos
 
         );
 

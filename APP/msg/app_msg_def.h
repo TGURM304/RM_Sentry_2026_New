@@ -17,9 +17,13 @@ struct app_msg_gimbal_to_chassis {
 } __attribute__((packed));
 
 struct app_msg_chassis_to_gimbal {
-    uint8_t robot_id, robot_level;
     uint16_t robot_hp;
     uint8_t game_state;
+    uint16_t shooter_heat;
+    uint16_t shooter_heat_limit;
+    uint16_t shooter_heat_ps;
+    uint16_t robot_allow_armor;
+    uint8_t chassis_all_motor_ready_flag;
 
 } __attribute__((packed));
 

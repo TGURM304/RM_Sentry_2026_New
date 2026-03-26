@@ -9,6 +9,7 @@
 
 #include "BMI088reg.h"
 #include "bsp_def.h"
+#include "bsp_time.h"
 
 using namespace Motor;
 
@@ -150,4 +151,5 @@ void dev_dm_motor_can_callback(bsp_can_msg_t* msg) {
     p->status.err = p->feedback_.err;
     p->status.t_mos = p->feedback_.t_mos;
     p->status.t_rotor = p->feedback_.t_rotor;
+    p->status.last_online_time = bsp_time_get_ms();
 }

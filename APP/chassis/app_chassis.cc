@@ -204,6 +204,7 @@ float encoder_to_angle_360(int32_t enc, int32_t zero_offset)
     return angle;
 }
 
+uint8_t all_motor_ready_flag = 0;//1为都好了
 
 //双板通信
 //收
@@ -211,10 +212,13 @@ app_msg_can_receiver <app_msg_gimbal_to_chassis> gimbal(E_CAN3, 0x036);
 //发
 void send_msg_to_gimbal() {
     app_msg_chassis_to_gimbal pkg = {
-        .robot_id = 1,
-        .robot_level = 110,
         .robot_hp = basic::data()->robot_status.current_hp,
-        .game_state = basic::data()->game_status.game_progress
+        .game_state = basic::data()->game_status.game_progress,
+        .shooter_heat = basic::data()->power_heat_data.shooter_17mm_1_barrel_heat,
+        .shooter_heat_limit =  basic::data()->robot_status.shooter_barrel_heat_limit,
+        .shooter_heat_ps =  basic::data()->robot_status.shooter_barrel_cooling_value,
+        .robot_allow_armor = basic::data()->projectile_allowance.projectile_allowance_17mm,
+        .chassis_all_motor_ready_flag = all_motor_ready_flag,
 
     };
     app_msg_can_send(E_CAN3, 0x044, pkg);
@@ -259,93 +263,112 @@ void app_chassis_task(void *args) {
 	        vx=vy=rotate = 0;
 	    }
 
+	    //底盘离线同时检测
+	    if(bsp_time_get_ms() - s_1.device()->last_online_time <= 100 and
+            bsp_time_get_ms() - s_2.device()->last_online_time <= 100 and
+            bsp_time_get_ms() - s_3.device()->last_online_time <= 100 and
+            bsp_time_get_ms() - s_4.device()->last_online_time <= 100 and
+            bsp_time_get_ms() - w_1.device()->last_online_time <= 100 and
+            bsp_time_get_ms() - w_2.device()->last_online_time <= 100 and
+            bsp_time_get_ms() - w_3.device()->last_online_time <= 100 and
+            bsp_time_get_ms() - w_4.device()->last_online_time <= 100 ) {
+	        all_motor_ready_flag = 1;
+	    }else {
+	        all_motor_ready_flag = 0;
+	    }
+
+
 
 	    //小陀螺正方向解算
 	    auto theta = std::atan2(vy, vx), r = std::sqrt((vx * vx) + (vy * vy));
 	    // 以下均注释则为无解算
 	    // theta -= (ins->yaw * M_PI / 180 +0.00);//底盘陀螺仪正方向解算
-	    // theta -= (gimbal()->b_yaw_pos + 1.92);//大yaw轴正方向解算
-	    theta -= (gimbal()->b_yaw_pos + gimbal()->s_yaw_pos_equally * M_PI / 180 + 1.89);//小yaw正方向解算
+	    theta -= (gimbal()->b_yaw_pos + 1.92);//大yaw轴正方向解算
+	    // theta -= (gimbal()->b_yaw_pos + gimbal()->s_yaw_pos_equally * M_PI / 180 + 1.89);//小yaw正方向解算
         //旋转速度的角度前馈,不然小陀螺平移会跑偏
 	    double translation = sqrt(vx*vx + vy*vy);
 	    rotate_theta_forwardfeed(&theta,rotate,translation,gimbal()->k_rotate); //这个补偿系数越小（负的越大），加以逆时针旋转速度和向前平移时越往右偏
 	    vx = r * std::cos(theta), vy = r * std::sin(theta);
 
 
-	    //防滑控制
-	    // if(rotate == 0) rotate = eps;
-	    // if(vx == 0 and vy == 0) {
-	    //     if(rotate > eps or zero_count == 500) {
-	    //         sw_1.update( rotate / M_SQRT2,  rotate / M_SQRT2);
-	    //         sw_2.update( rotate / M_SQRT2, -rotate / M_SQRT2);
-	    //         sw_3.update(-rotate / M_SQRT2, -rotate / M_SQRT2);
-	    //         sw_4.update(-rotate / M_SQRT2,  rotate / M_SQRT2);
-	    //     } else {
-	    //         zero_count ++;
-	    //         motor_update(vx, vy, rotate);
-	    //     }
-	    // } else {
-	    //     zero_count = 0;
-	    //     motor_update(vx, vy, rotate);
-	    // }
-	    //正常控制
-	    if(vx == 0 and vy == 0 and rotate ==0) {
-            //舵不更新，轮速为0
-	        s_1.relax(), s_2.relax(), s_3.relax(), s_4.relax();
-	        w_1.update(0);
-	        w_2.update(0);
-	        w_3.update(0);
-	        w_4.update(0);
-	    }else {
-	        s_1.activate(), s_2.activate(), s_3.activate(), s_4.activate();
-	        motor_update(vx, vy, rotate);
-	    }
+        if(all_motor_ready_flag == 1) {
+
+            //防滑控制
+            // if(rotate == 0) rotate = eps;
+            // if(vx == 0 and vy == 0) {
+            //     if(rotate > eps or zero_count == 500) {
+            //         sw_1.update( rotate / M_SQRT2,  rotate / M_SQRT2);
+            //         sw_2.update( rotate / M_SQRT2, -rotate / M_SQRT2);
+            //         sw_3.update(-rotate / M_SQRT2, -rotate / M_SQRT2);
+            //         sw_4.update(-rotate / M_SQRT2,  rotate / M_SQRT2);
+            //     } else {
+            //         zero_count ++;
+            //         motor_update(vx, vy, rotate);
+            //     }
+            // } else {
+            //     zero_count = 0;
+            //     motor_update(vx, vy, rotate);
+            // }
+
+            //正常控制
+            if(vx == 0 and vy == 0 and rotate ==0) {
+                //舵不更新，轮速为0
+                s_1.relax(), s_2.relax(), s_3.relax(), s_4.relax();
+                w_1.update(0);
+                w_2.update(0);
+                w_3.update(0);
+                w_4.update(0);
+            }else {
+                s_1.activate(), s_2.activate(), s_3.activate(), s_4.activate();
+                motor_update(vx, vy, rotate);
+            }
 
 
-	    //功率分配与控制
-	    //设置超级电容充放电功率，目前设置为云台传的功率上限，即三个功率（裁判系统功率上限，超电充放电功率，功率模型限制功率）相同均为裁判系统的100w
-	    if(CAP::data()->limit_power != static_cast<uint8_t>(gimbal()->chassis_power_limit)) {
-	      CAP::send(gimbal()->chassis_power_limit);
-	        //todo:存在一个问题，超电留有余量，你给他发100w实际上是平均95w充放电功率，所以才会出现超电掉电,所以可以加余量
-	    }
-	    //保险设置如果超电耗电超过一半，则在50%以下根据比例来缩小目标限制功率
-	    // if(false) {
-	    if(bsp_time_get_ms() - CAP::data()->last_online_time < 100 and CAP::data()->cap_percent > 0 and CAP::data()->cap_percent <= 50) {
-            cap_decay_alpha = static_cast<float>(CAP::data()->cap_percent) * 2 / 100;
-	    }else {
-	        cap_decay_alpha = 1.0;
-	    }
-        //先分配舵和轮的功率
-	    s_w_power_vector = allocate_SW_power(gimbal()->chassis_power_limit,0.5,chassis_s.getTotalPredictNotLimitPower());
-	    //四个轮的功率分配
-	    chassis_w.updateMotorError(0,w_1.target() - w_1.speed );
-	    chassis_w.updateMotorError(1,w_2.target() - w_2.speed );
-	    chassis_w.updateMotorError(2,w_3.target() - w_3.speed );
-	    chassis_w.updateMotorError(3,w_4.target() - w_4.speed );
-	    chassis_w.allocatePower(s_w_power_vector[1],cap_decay_alpha);
-	    m3508_1_power.limiter(&w_1.output,w_1.speed,m3508_1_power.power_limit);
-	    m3508_2_power.limiter(&w_2.output,w_2.speed,m3508_2_power.power_limit);
-	    m3508_3_power.limiter(&w_3.output,w_3.speed,m3508_3_power.power_limit);
-	    m3508_4_power.limiter(&w_4.output,w_4.speed,m3508_4_power.power_limit);
-	    w_1.send_output(w_1.output);
-	    w_2.send_output(w_2.output);
-	    w_3.send_output(w_3.output);
-	    w_4.send_output(w_4.output);
-        //四个舵的功率分配
-	    chassis_s.updateMotorError(0,s_1.target() - s_1.angle );
-	    chassis_s.updateMotorError(1,s_2.target() - s_2.angle );
-	    chassis_s.updateMotorError(2,s_3.target() - s_3.angle );
-	    chassis_s.updateMotorError(3,s_4.target() - s_4.angle );
-	    chassis_s.allocatePower(s_w_power_vector[0],cap_decay_alpha);
-	    gm6020_1_power.limiter(&s_1.output,s_1.speed,gm6020_1_power.power_limit);
-	    gm6020_2_power.limiter(&s_2.output,s_2.speed,gm6020_2_power.power_limit);
-	    gm6020_3_power.limiter(&s_3.output,s_3.speed,gm6020_3_power.power_limit);
-	    gm6020_4_power.limiter(&s_4.output,s_4.speed,gm6020_4_power.power_limit);
-	    s_1.send_output(s_1.output);
-        s_2.send_output(s_2.output);
-	    s_3.send_output(s_3.output);
-	    s_4.send_output(s_4.output);
+            //功率分配与控制
+            //设置超级电容充放电功率，目前设置为云台传的功率上限，即三个功率（裁判系统功率上限，超电充放电功率，功率模型限制功率）相同均为裁判系统的100w
+            if(CAP::data()->limit_power != static_cast<uint8_t>(gimbal()->chassis_power_limit)) {
+                CAP::send(gimbal()->chassis_power_limit);
+                //todo:存在一个问题，超电留有余量，你给他发100w实际上是平均95w充放电功率，所以才会出现超电掉电,所以可以加余量
+            }
+            //保险设置如果超电耗电超过一半，则在50%以下根据比例来缩小目标限制功率
+            // if(false) {
+            if(bsp_time_get_ms() - CAP::data()->last_online_time < 100 and CAP::data()->cap_percent > 0 and CAP::data()->cap_percent <= 50) {
+                cap_decay_alpha = static_cast<float>(CAP::data()->cap_percent) * 2 / 100;
+            }else {
+                cap_decay_alpha = 1.0;
+            }
+            //先分配舵和轮的功率
+            s_w_power_vector = allocate_SW_power(gimbal()->chassis_power_limit,0.5,chassis_s.getTotalPredictNotLimitPower());
+            //四个轮的功率分配
+            chassis_w.updateMotorError(0,w_1.target() - w_1.speed );
+            chassis_w.updateMotorError(1,w_2.target() - w_2.speed );
+            chassis_w.updateMotorError(2,w_3.target() - w_3.speed );
+            chassis_w.updateMotorError(3,w_4.target() - w_4.speed );
+            chassis_w.allocatePower(s_w_power_vector[1],cap_decay_alpha);
+            m3508_1_power.limiter(&w_1.output,w_1.speed,m3508_1_power.power_limit);
+            m3508_2_power.limiter(&w_2.output,w_2.speed,m3508_2_power.power_limit);
+            m3508_3_power.limiter(&w_3.output,w_3.speed,m3508_3_power.power_limit);
+            m3508_4_power.limiter(&w_4.output,w_4.speed,m3508_4_power.power_limit);
+            w_1.send_output(w_1.output);
+            w_2.send_output(w_2.output);
+            w_3.send_output(w_3.output);
+            w_4.send_output(w_4.output);
+            //四个舵的功率分配
+            chassis_s.updateMotorError(0,s_1.target() - s_1.angle );
+            chassis_s.updateMotorError(1,s_2.target() - s_2.angle );
+            chassis_s.updateMotorError(2,s_3.target() - s_3.angle );
+            chassis_s.updateMotorError(3,s_4.target() - s_4.angle );
+            chassis_s.allocatePower(s_w_power_vector[0],cap_decay_alpha);
+            gm6020_1_power.limiter(&s_1.output,s_1.speed,gm6020_1_power.power_limit);
+            gm6020_2_power.limiter(&s_2.output,s_2.speed,gm6020_2_power.power_limit);
+            gm6020_3_power.limiter(&s_3.output,s_3.speed,gm6020_3_power.power_limit);
+            gm6020_4_power.limiter(&s_4.output,s_4.speed,gm6020_4_power.power_limit);
+            s_1.send_output(s_1.output);
+            s_2.send_output(s_2.output);
+            s_3.send_output(s_3.output);
+            s_4.send_output(s_4.output);
 
+        }
 
 	    app_msg_vofa_send(E_UART_DEBUG,
 	                                    s_1.device()->angle,  //340
