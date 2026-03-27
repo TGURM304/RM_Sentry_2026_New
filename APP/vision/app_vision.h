@@ -48,6 +48,6 @@ void send(const float *q,
           float pitch_vel,
           float bullet_speed,
           uint8_t is_start,
-          uint8_t hp);
+          uint16_t hp);
 uint32_t last_update_time();
 } // namespace vision

@@ -43,7 +43,7 @@ uint32_t vision::last_update_time() {
 
 static auto ins = app_ins_data();
 
-void vision::send(const float *q, float yaw, float yaw_vel, float pitch, float pitch_vel, float bullet_speed, uint8_t is_start, uint8_t hp) {
+void vision::send(const float *q, float yaw, float yaw_vel, float pitch, float pitch_vel, float bullet_speed, uint8_t is_start, uint16_t hp) {
     SendPacket pkg = {};
 
     pkg.mode = 1;
