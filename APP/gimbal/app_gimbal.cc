@@ -27,6 +27,7 @@
 #include "app_msg_def.h"
 #include "bsp_buzzer.h"
 #include "app_music.h"
+#include "bsp_led.h"
 #include "power_manager.h"
 
 #ifdef COMPILE_GIMBAL
@@ -244,14 +245,24 @@ void app_gimbal_task(void *args) {
         if(++pc_send == 2) {
             pc_send            = 0;
             float bullet_speed = 20;
-            float pitch        = ins->pitch / 180 * M_PI;
-            float pitch_vel    = ins->raw.gyro[0];
+            float pitch        = - ins->roll / 180 * M_PI;
+            float pitch_vel    = - ins->raw.gyro[0];
             float yaw          = ins->yaw / 180 * M_PI;
             float yaw_vel      = ins->raw.gyro[2];
             uint8_t is_start   = chassis()->game_state;
             uint16_t hp        = chassis()->robot_hp;
-
             vision::send(ins->q, yaw, yaw_vel, pitch, pitch_vel, bullet_speed, is_start, hp);
+
+            // // 上位机状态指示灯
+            if(vd->status == 0) {
+                app_sys_set_led_color(.86); // 未收到串口数据显示粉色
+            }else if (vd->status == 1 && bsp_time_get_ms() - vision::last_update_time() <= 100) {
+                app_sys_set_led_color(.17); // 自瞄在线显示黄色
+            }else if (vd->status == 2 && bsp_time_get_ms() - vision::last_update_time() <= 100) {
+                app_sys_set_led_color(.32); // 自瞄导航都在线显示绿色
+            }else{
+                vd->status = 0;
+            }
         }
 
         //双板通信
@@ -440,7 +451,6 @@ void app_gimbal_task(void *args) {
                 pit.update((pit_output));
             }
 
-
             //小yaw扫描
             if(s_yaw_towards_flag == 0) {
                 s_yaw_target += 0.18f;
@@ -580,15 +590,21 @@ void app_gimbal_task(void *args) {
 
         //调试区
         app_msg_vofa_send(E_UART_DEBUG,
+                          vd->pitch * 180 /M_PI,
+                          vd->yaw * 180 /M_PI,
+                          ins->roll,
+                          ins->yaw
 
-                          chassis()->robot_hp,
-                          chassis()->game_state,
-                          chassis()->shooter_heat,
-                          chassis()->shooter_heat_limit,
-                          chassis()->shooter_heat_ps,
-                          chassis()->robot_allow_armor,
-                          b_yaw.status.vel,
-                          b_yaw.status.pos
+
+
+                          // chassis()->robot_hp,
+                          // chassis()->game_state,
+                          // chassis()->shooter_heat,
+                          // chassis()->shooter_heat_limit,
+                          // chassis()->shooter_heat_ps,
+                          // chassis()->robot_allow_armor,
+                          // b_yaw.status.vel,
+                          // b_yaw.status.pos
 
         );
 

@@ -34,6 +34,8 @@ const app_sys_conf_t *app_sys_conf();
 extern "C" {
 #endif
 
+void app_sys_set_led_color(float color);
+
 /*!
 * 系统任务
 */

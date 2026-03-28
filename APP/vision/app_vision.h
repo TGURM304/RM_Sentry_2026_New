@@ -16,7 +16,6 @@ struct SendPacket {
     float pitch        = 0;
     float pitch_vel    = 0;
     float bullet_speed = 0;
-    // uint16_t bullet_count = 0;
     uint8_t is_start = 0;
     uint16_t hp      = 0;
     uint16_t crc16;
@@ -35,6 +34,7 @@ struct RecvPacket {
     float nav_x;
     float nav_y;
     float nav_z;
+    uint8_t status = 0; // 0: 系统未启动; 1: 自瞄已启动; 2: 导航已启动
     uint16_t crc16;
 } __attribute__((packed));
 static_assert(sizeof(RecvPacket) <= 64);

@@ -45,7 +45,6 @@ static auto ins = app_ins_data();
 
 void vision::send(const float *q, float yaw, float yaw_vel, float pitch, float pitch_vel, float bullet_speed, uint8_t is_start, uint16_t hp) {
     SendPacket pkg = {};
-
     pkg.mode = 1;
     for (size_t i = 0; i < 4; i++)
         pkg.q[i] = q[i];
@@ -56,7 +55,6 @@ void vision::send(const float *q, float yaw, float yaw_vel, float pitch, float p
     pkg.bullet_speed = bullet_speed;
     pkg.is_start = is_start;
     pkg.hp = hp;
-    // pkg.bullet_count = bullet_count;
     CRC16::append(pkg);
     bsp_uart_send(E_UART_VISION, reinterpret_cast <uint8_t *> (&pkg), sizeof pkg);
 }

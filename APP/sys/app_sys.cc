@@ -106,6 +106,11 @@ void bsp_hw_init() {
     bsp_uart_init(E_UART_DEBUG, &huart10);
 }
 
+float led_color = 0;
+void app_sys_set_led_color(const float color) {
+    led_color = color;
+}
+
 // 放一些系统级任务
 void app_sys_task() {
     bsp_hw_init();
@@ -118,14 +123,11 @@ void app_sys_task() {
     if(!app_sys_err()) {
         app_sys_music_play(E_MUSIC_BOOT);
     }
-    int8_t r = 0, g = 0, b = 0;
     while(true) {
         if(!app_sys_err()) {
             // 系统正常工作，白色呼吸灯
-            bsp_led_set(std::abs(r), std::abs(g), std::abs(b));
-            if(++r > 50) r = -50;
-            if(++g > 50) g = -50;
-            if(++b > 50) b = -50;
+            bsp_led_set_hsv(led_color, 1.f, 0.5f*(sinf(6.28f*(bsp_time_get_ms()%3000)/3000.0f)+1.0f));
+
             OS::Task::SleepMilliseconds(10);
         } else {
             // FLASH 描述符错误，黄灯快闪
