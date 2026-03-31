@@ -293,7 +293,9 @@ void app_gimbal_task(void *args) {
 
 
         //控制逻辑区，遥控器作为安全控制器和控制源选择器
-        if(bsp_time_get_ms() - rc->timestamp <= 50) {
+        // if(bsp_time_get_ms() - rc->timestamp <= 50) {
+        //上场时关闭离线检测，且默认遥控器位置为0时为启动全部状态
+        if(true) {
             //切换模式提示音
             // 1\. 检测模式切换（只要 s_r 变化就触发一次）
             if(rc->s_r != last_s_r) {
@@ -361,6 +363,9 @@ void app_gimbal_task(void *args) {
 
             } else if(rc->s_r == 1 or rc->s_r == -1) {
                 //小电脑控制区
+                //目前采用以下的逻辑：首先记住哨兵现在所用遥控器右侧的拨杆上下反了，上为-1而下为1
+                //其次：当上场时：左右拨杆均拨到上时开启比赛状态，此时会接收比赛状态包，如果开始比赛，那么开启扫描，开启底盘变速旋转（不移动时高速小陀螺，移动时低速小陀螺），并且有热量闭环（热量不够即使瞄到了也不射
+                //当非上场时：这个时候不会发比赛开始标志，那么拨到上不会扫描，也不会旋转，但仍会自瞄；拨到下会扫描，扫到会正常瞄，但是不会旋转。 无比赛标志时左边拨杆拨上则无视热量，
                 //小电脑数据离线检测
                 if(bsp_time_get_ms() - vision::last_update_time() <= 100) {
                     //确认瞄准后再移动云台
@@ -369,18 +374,25 @@ void app_gimbal_task(void *args) {
                         pit_target   = static_cast<float>(vd->pitch * 180.0 / M_PI);
                         s_yaw_target = static_cast<float>(vd->yaw * 180.0 / M_PI);
                         //确认射击指令后再射击
-                        if(vd->mode == 2 and rc->s_l == 1) {
+                        // if(vd->mode == 2 and rc->s_l == 1) {
+                        if(vd->mode == 2 and rc->s_l == 1 and chassis()->game_state != 4 ) {
                             // if(rc->s_l == 1) {
                             //自瞄允许发弹且遥控器允许发弹时控制发弹
                             trigger_speed     = -1000;
                             left_shoot_speed  = 6000;
                             right_shoot_speed = -6000;
+                        }else if(vd->mode == 2 and rc->s_l == 1 and chassis()->game_state == 4 and (chassis()->shooter_heat_limit - chassis()->shooter_heat >= 25) ){
+
+                            trigger_speed     = -1000;
+                            left_shoot_speed  = 6000;
+                            right_shoot_speed = -6000;
+
                         } else {
                             trigger_speed     = 0;
                             left_shoot_speed  = 6000;
                             right_shoot_speed = -6000;
                         }
-                    } else {
+                    }else {
                         //云台传自瞄状态0，此时云台Yyp不控制，发射机构速度置为0
                         trigger_speed     = 0;
                         left_shoot_speed  = 6000;
@@ -389,7 +401,17 @@ void app_gimbal_task(void *args) {
                     //底盘控制部分，目前没有接口，速度从遥控器获取，有导航之后可以等于导航速度
                     chassis_vx     = 15000 * vd->nav_x;
                     chassis_vy     = 15000 * vd->nav_y;
-                    chassis_rotate = 0.0f;
+                    //关于旋转速度：
+                    if(rc->s_r == -1 and chassis()->game_state == 4) {
+                        if(chassis_vx == 0 and chassis_vy == 0) {
+                            chassis_rotate = -6600.0;
+                        }else {
+                            chassis_rotate = -1100.0f;
+                        }
+                    }else { //rc->s_r == 1,rc->s_r == -1且未开始游戏等
+                        chassis_rotate = 0.0f;
+                    }
+
                     // chassis_vx = static_cast<float>(vxFilter.update(15000 * vd->vx)) ;
                     // chassis_vy = static_cast<float>(vyFilter.update(15000 * vd->vx)) ;
 
@@ -422,7 +444,8 @@ void app_gimbal_task(void *args) {
 
         //todo:上场前关闭所有遥控器离线检测
         //电机控制区,通过不同条件选择进入 小yaw扫描pid//大yaw跟小yaw控制pid 两种控制模式
-        if(rc->s_r == 1 and vd->mode == 0 and bsp_time_get_ms() - rc->timestamp <= 50) {
+        // if(rc->s_r == 1 and vd->mode == 0 and bsp_time_get_ms() - rc->timestamp <= 50) {
+        if( ( rc->s_r == 1 and vd->mode == 0 ) or (rc->s_r == -1 and vd->mode == 0 and chassis()->game_state == 4) ) {
             // 扫描控制区,当遥控器切换为小电脑控制且自瞄发送未识别到时进入此模式
             //小yaw和pitch轴来回运动，大yaw恒定速度运动来扫描周围情况
 
