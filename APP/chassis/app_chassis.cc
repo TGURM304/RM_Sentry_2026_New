@@ -368,6 +368,15 @@ void app_chassis_task(void *args) {
             s_3.send_output(s_3.output);
             s_4.send_output(s_4.output);
 
+        }else {
+            w_1.update(0);
+            w_2.update(0);
+            w_3.update(0);
+            w_4.update(0);
+            s_1.update(0);
+            s_2.update(0);
+            s_3.update(0);
+            s_4.update(0);
         }
 
 	    app_msg_vofa_send(E_UART_DEBUG,

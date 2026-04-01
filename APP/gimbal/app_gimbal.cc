@@ -472,6 +472,8 @@ void app_gimbal_task(void *args) {
                 pit_output = pit_angle.update((pit_current), (pit_output));
                 pit_output = pit_speed.update(static_cast<float>(ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
                 pit.update((pit_output));
+            }else {
+                //位置环的不update即可
             }
 
             //小yaw扫描
@@ -497,6 +499,8 @@ void app_gimbal_task(void *args) {
                 s_yaw_output  = s_yaw_angle.update(s_yaw_current, s_yaw_output);
                 s_yaw_output  = s_yaw_speed.update(-static_cast<float>(ins->raw.gyro[2] * 180.0 / M_PI), (s_yaw_output));
                 s_yaw.update((s_yaw_output));
+            }else {
+                //位置环的不update即可
             }
 
             if(chassis()->chassis_all_motor_ready_flag ==1) {
@@ -518,6 +522,8 @@ void app_gimbal_task(void *args) {
                 b_yaw_output = b_yaw_target;
                 b_yaw_output = b_yaw_speed.update((b_yaw.status.vel), (b_yaw_output));
                 b_yaw.control(0, 0, 0, 0, (b_yaw_output));
+            }else {
+                //发空包在判断离线状态里面就有了
             }
 
             //测试，发空包,为了得到反馈数据,取消注释这个时 把上面含死区的控制注释掉
@@ -542,6 +548,8 @@ void app_gimbal_task(void *args) {
                 pit_output = pit_speed.update(static_cast<float>(ins->raw.gyro[0] * 180.0 / M_PI), (pit_output));
                 // pit_output = pit_speed.update(static_cast <float> (ins->raw.gyro[0] * 180.0 / M_PI), pit_target = static_cast <float> (rc->rc_r[1]) * 1.0f);
                 pit.update((pit_output));
+            }else {
+                //位置环的不update即可
             }
 
 
@@ -554,11 +562,14 @@ void app_gimbal_task(void *args) {
             s_yaw_angle_err = s_yaw_output - s_yaw_current; //规划最短路径
             s_yaw_angle_err = wrap_to_minus180_180(s_yaw_angle_err);
 
-            if(s_yaw_online_flag == 1) {
+            if(s_yaw_online_flag == 1 and b_yaw_online_flag == 1) {
+                //为防止大yaw似了导致小yaw卡限位，故你们都去死把哈哈哈
                 s_yaw_output    = s_yaw_angle.update((0.0), (s_yaw_angle_err));
                 s_yaw_output    = s_yaw_speed.update(-static_cast<float>(ins->raw.gyro[2] * 180.0 / M_PI),
                                                   (s_yaw_output + s_yaw_angle_err * 0.05f + b_yaw.status.vel * 0.8f));
                 s_yaw.update((s_yaw_output));
+            }else {
+                //位置环的不update即可
             }
 
 
@@ -596,6 +607,8 @@ void app_gimbal_task(void *args) {
                     //控制，正对应顺时针转
                     b_yaw.control(0, 0, 0, 0, (b_yaw_output + -0.0000f * chassis_rotate));
                 }
+            }else {
+                //发空包在判断离线状态里面就有了
             }
 
 
