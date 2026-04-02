@@ -562,8 +562,7 @@ void app_gimbal_task(void *args) {
             s_yaw_angle_err = s_yaw_output - s_yaw_current; //规划最短路径
             s_yaw_angle_err = wrap_to_minus180_180(s_yaw_angle_err);
 
-            if(s_yaw_online_flag == 1 and b_yaw_online_flag == 1) {
-                //为防止大yaw似了导致小yaw卡限位，故你们都去死把哈哈哈
+            if(s_yaw_online_flag == 1 ) {
                 s_yaw_output    = s_yaw_angle.update((0.0), (s_yaw_angle_err));
                 s_yaw_output    = s_yaw_speed.update(-static_cast<float>(ins->raw.gyro[2] * 180.0 / M_PI),
                                                   (s_yaw_output + s_yaw_angle_err * 0.05f + b_yaw.status.vel * 0.8f));
