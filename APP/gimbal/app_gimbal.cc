@@ -388,12 +388,12 @@ void app_gimbal_task(void *args) {
                         if(vd->mode == 2  and ctrl_game_state == 4 and rc->s_l == 1 ) {
                             // if(rc->s_l == 1) {
                             //自瞄允许发弹且遥控器允许发弹时控制发弹
-                            trigger_speed     = -1000;
+                            trigger_speed     = -2000;
                             left_shoot_speed  = 6000;
                             right_shoot_speed = -6000;
                         }else if(vd->mode == 2 and ctrl_game_state == 4 and rc->s_l == -1 ){
 
-                            trigger_speed     = -1000;
+                            trigger_speed     = -2000;
                             left_shoot_speed  = 6000;
                             right_shoot_speed = -6000;
 
@@ -455,7 +455,7 @@ void app_gimbal_task(void *args) {
         //todo:上场前关闭所有遥控器离线检测
         //电机控制区,通过不同条件选择进入 小yaw扫描pid//大yaw跟小yaw控制pid 两种控制模式
         // if(rc->s_r == 1 and vd->mode == 0 and bsp_time_get_ms() - rc->timestamp <= 50) {
-        if( ( rc->s_r == 1 and vd->mode == 0  ) or (rc->s_r == -1 and vd->mode == 0 and ctrl_game_state == 4 ) ) {
+        if( ( rc->s_r == 1 and vd->mode == 0  ) or (rc->s_r == -1 and vd->mode == 0 ) ) {
             // 扫描控制区,当遥控器切换为小电脑控制且自瞄发送未识别到时进入此模式
             //小yaw和pitch轴来回运动，大yaw恒定速度运动来扫描周围情况
 
