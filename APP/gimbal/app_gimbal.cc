@@ -267,11 +267,11 @@ void app_gimbal_task(void *args) {
             }
         }
 
-        //左拨杆拨到下模拟比赛开始
+        //左拨杆拨到下模拟比赛开始 和 裁判系统真实比赛开始标志
         if(rc->s_l == -1) {
             ctrl_game_state = 4;
         }else {
-            ctrl_game_state = 0;
+            ctrl_game_state = chassis()->game_state;
         }
 
 
@@ -385,13 +385,13 @@ void app_gimbal_task(void *args) {
                         s_yaw_target = static_cast<float>(vd->yaw * 180.0 / M_PI);
                         //确认射击指令后再射击
                         // if(vd->mode == 2 and rc->s_l == 1) {
-                        if(vd->mode == 2  and ctrl_game_state != 4 ) {
+                        if(vd->mode == 2  and ctrl_game_state == 4 and rc->s_l == 1 ) {
                             // if(rc->s_l == 1) {
                             //自瞄允许发弹且遥控器允许发弹时控制发弹
                             trigger_speed     = -1000;
                             left_shoot_speed  = 6000;
                             right_shoot_speed = -6000;
-                        }else if(vd->mode == 2 and ctrl_game_state == 4  ){
+                        }else if(vd->mode == 2 and ctrl_game_state == 4 and rc->s_l == -1 ){
 
                             trigger_speed     = -1000;
                             left_shoot_speed  = 6000;
