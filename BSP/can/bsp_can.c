@@ -19,6 +19,7 @@ void bsp_can_init(bsp_can_e e, FDCAN_HandleTypeDef *h) {
     HAL_FDCAN_ActivateNotification(h, FDCAN_IT_RX_FIFO1_NEW_MESSAGE, 0);
     HAL_FDCAN_ConfigGlobalFilter(h, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_REJECT_REMOTE);
     // 一定要在配置完后 Start，否则若总线上有 CAN 包，设备会 BUSY。
+    HAL_FDCAN_ActivateNotification(h,FDCAN_IT_BUS_OFF,0);
     HAL_FDCAN_Start(h);
 }
 
@@ -114,5 +115,13 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *h, uint32_t RxFifo1ITs) {
     UNUSED(RxFifo1ITs);
     for(uint8_t i = 0; i < (uint8_t) E_CAN_END_DONT_REMOVE; i++) {
         if(handle[i] == h) bsp_can_rx_sol(i, FDCAN_RX_FIFO1);
+    }
+}
+
+void HAL_FDCAN_ErrorStatusCallback(FDCAN_HandleTypeDef *hfdcan, uint32_t ErrorStatusITs)
+{
+    if ((ErrorStatusITs & FDCAN_IT_BUS_OFF) != 0)  // If Bus-Off error occurred
+    {
+        hfdcan->Instance->CCCR &= ~FDCAN_CCCR_INIT;  // Clear INIT bit to recover from Bus-Off
     }
 }
