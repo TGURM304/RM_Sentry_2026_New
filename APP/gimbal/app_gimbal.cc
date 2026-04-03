@@ -203,6 +203,8 @@ const auto rc          = bsp_rc_data();
 
 vision::RecvPacket *vd = vision::recv();
 
+uint8_t ctrl_game_state = 0;
+
 //双板通信
 //收
 app_msg_can_receiver<app_msg_chassis_to_gimbal> chassis(E_CAN3, 0x044);
@@ -249,7 +251,7 @@ void app_gimbal_task(void *args) {
             float pitch_vel    = - ins->raw.gyro[0];
             float yaw          = ins->yaw / 180 * M_PI;
             float yaw_vel      = ins->raw.gyro[2];
-            uint8_t is_start   = chassis()->game_state;
+            uint8_t is_start   = ctrl_game_state;
             uint16_t hp        = chassis()->robot_hp;
             vision::send(ins->q, yaw, yaw_vel, pitch, pitch_vel, bullet_speed, is_start, hp);
 
@@ -264,6 +266,14 @@ void app_gimbal_task(void *args) {
                 vd->status = 0;
             }
         }
+
+        //左拨杆拨到下模拟比赛开始
+        if(rc->s_l == -1) {
+            ctrl_game_state = 4;
+        }else {
+            ctrl_game_state = 0;
+        }
+
 
         //双板通信
         if(++send_count == 10) {
@@ -355,10 +365,10 @@ void app_gimbal_task(void *args) {
                     left_shoot_speed  = 6000;
                     right_shoot_speed = -6000;
                 } else if(rc->s_l == -1) {
-                    //高速射击
-                    trigger_speed     = -4500;
-                    left_shoot_speed  = 6000;
-                    right_shoot_speed = -6000;
+                    //不射击
+                    trigger_speed     = 0;
+                    left_shoot_speed  = 0;
+                    right_shoot_speed = 0;
                 }
 
             } else if(rc->s_r == 1 or rc->s_r == -1) {
@@ -375,13 +385,13 @@ void app_gimbal_task(void *args) {
                         s_yaw_target = static_cast<float>(vd->yaw * 180.0 / M_PI);
                         //确认射击指令后再射击
                         // if(vd->mode == 2 and rc->s_l == 1) {
-                        if(vd->mode == 2 and rc->s_l == 1 and chassis()->game_state != 4 ) {
+                        if(vd->mode == 2  and ctrl_game_state != 4 ) {
                             // if(rc->s_l == 1) {
                             //自瞄允许发弹且遥控器允许发弹时控制发弹
                             trigger_speed     = -1000;
                             left_shoot_speed  = 6000;
                             right_shoot_speed = -6000;
-                        }else if(vd->mode == 2 and rc->s_l == 1 and chassis()->game_state == 4 and (chassis()->shooter_heat_limit - chassis()->shooter_heat >= 25) ){
+                        }else if(vd->mode == 2 and ctrl_game_state == 4  ){
 
                             trigger_speed     = -1000;
                             left_shoot_speed  = 6000;
@@ -399,10 +409,10 @@ void app_gimbal_task(void *args) {
                         right_shoot_speed = -6000;
                     }
                     //底盘控制部分，目前没有接口，速度从遥控器获取，有导航之后可以等于导航速度
-                    chassis_vx     = 15000 * vd->nav_x;
-                    chassis_vy     = 15000 * vd->nav_y;
+                    chassis_vx     = 6000 * vd->nav_x;
+                    chassis_vy     = 6000 * vd->nav_y;
                     //关于旋转速度：
-                    if(rc->s_r == -1 and chassis()->game_state == 4) {
+                    if(rc->s_r == -1 and ctrl_game_state == 4) {
                         if(chassis_vx == 0 and chassis_vy == 0) {
                             chassis_rotate = -6600.0;
                         }else {
@@ -445,7 +455,7 @@ void app_gimbal_task(void *args) {
         //todo:上场前关闭所有遥控器离线检测
         //电机控制区,通过不同条件选择进入 小yaw扫描pid//大yaw跟小yaw控制pid 两种控制模式
         // if(rc->s_r == 1 and vd->mode == 0 and bsp_time_get_ms() - rc->timestamp <= 50) {
-        if( ( rc->s_r == 1 and vd->mode == 0 ) or (rc->s_r == -1 and vd->mode == 0 and chassis()->game_state == 4) ) {
+        if( ( rc->s_r == 1 and vd->mode == 0  ) or (rc->s_r == -1 and vd->mode == 0 and ctrl_game_state == 4 ) ) {
             // 扫描控制区,当遥控器切换为小电脑控制且自瞄发送未识别到时进入此模式
             //小yaw和pitch轴来回运动，大yaw恒定速度运动来扫描周围情况
 
@@ -506,7 +516,7 @@ void app_gimbal_task(void *args) {
             if(chassis()->chassis_all_motor_ready_flag ==1) {
                 // 大yaw转动
                 //rotate速度测试时给的是-6600
-                b_yaw_target = 2.0 - 0.0010 * chassis_rotate;
+                b_yaw_target = 1.4 - 0.0010 * chassis_rotate;
             }else {
                 b_yaw_target = 2.0;
             }
@@ -627,8 +637,14 @@ void app_gimbal_task(void *args) {
         app_msg_vofa_send(E_UART_DEBUG,
                           vd->pitch * 180 /M_PI,
                           vd->yaw * 180 /M_PI,
-                          ins->roll,
-                          ins->yaw
+                          vision::last_update_time(),
+                          vd->nav_x,
+                          vd->nav_y,
+                          chassis_vx,
+                          chassis_vy,
+                          chassis_rotate,
+                          vd->status
+
 
 
 
