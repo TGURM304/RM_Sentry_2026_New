@@ -73,7 +73,7 @@ MotorController m_right_shoot(std::make_unique<DJIMotor>(
 
 MovingAverageFilter vxFilter(20);
 MovingAverageFilter vyFilter(20);
-MovingAverageFilter rotateFilter(20);
+MovingAverageFilter rotateFilter(250);
 
 // 将编码器值(0~8191, 顺时针减小)转换为 [0,360) 角度，逆时针为正
 static inline double encoder_to_deg_ccw(int16_t enc, int16_t counts_per_rev) {
@@ -219,7 +219,8 @@ void send_msg_to_chassis() {
         .chassis_power_limit = 100.0f,
         // .k_rotate = -0.000069,//中平移速度
         // .k_rotate = -0.000055,//高平移速度
-        .k_rotate = -0.000025,
+        // .k_rotate = -0.000025,
+        .k_rotate = 0.0,
 
     };
     app_msg_can_send(E_CAN3, 0x036, pkg);
@@ -414,12 +415,13 @@ void app_gimbal_task(void *args) {
                     //关于旋转速度：
                     if(rc->s_r == -1 and ctrl_game_state == 4) {
                         if(chassis_vx == 0 and chassis_vy == 0) {
-                            chassis_rotate = -6600.0;
+                            chassis_rotate = (float)rotateFilter.update(-6600);
                         }else {
-                            chassis_rotate = -1100.0f;
+                            chassis_rotate = (float)rotateFilter.update(-1100);
                         }
                     }else { //rc->s_r == 1,rc->s_r == -1且未开始游戏等
                         chassis_rotate = 0.0f;
+                        rotateFilter.update(0);
                     }
 
                     // chassis_vx = static_cast<float>(vxFilter.update(15000 * vd->vx)) ;
