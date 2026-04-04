@@ -204,7 +204,7 @@ float encoder_to_angle_360(int32_t enc, int32_t zero_offset)
     return angle;
 }
 
-uint8_t all_motor_ready_flag = 0;//1为都好了
+uint8_t all_servo_motor_ready_flag = 0;//1为都好了
 
 //双板通信
 //收
@@ -218,7 +218,7 @@ void send_msg_to_gimbal() {
         .shooter_heat_limit =  basic::data()->robot_status.shooter_barrel_heat_limit,
         .shooter_heat_ps =  basic::data()->robot_status.shooter_barrel_cooling_value,
         .robot_allow_armor = basic::data()->projectile_allowance.projectile_allowance_17mm,
-        .chassis_all_motor_ready_flag = all_motor_ready_flag,
+        .chassis_all_motor_ready_flag = all_servo_motor_ready_flag,
 
     };
     app_msg_can_send(E_CAN3, 0x044, pkg);
@@ -242,9 +242,10 @@ void app_chassis_task(void *args) {
 
     double vx = 0, vy = 0, rotate = 0;
 
+    FDCAN_ErrorCountersTypeDef err_counters;
 
 	while(true) {
-
+	    HAL_FDCAN_GetErrorCounters(&hfdcan1, &err_counters);
 
         //双板通信
 	    if(++ send_count == 10) {
@@ -267,14 +268,10 @@ void app_chassis_task(void *args) {
 	    if(bsp_time_get_ms() - s_1.device()->last_online_time <= 100 and
             bsp_time_get_ms() - s_2.device()->last_online_time <= 100 and
             bsp_time_get_ms() - s_3.device()->last_online_time <= 100 and
-            bsp_time_get_ms() - s_4.device()->last_online_time <= 100 and
-            bsp_time_get_ms() - w_1.device()->last_online_time <= 100 and
-            bsp_time_get_ms() - w_2.device()->last_online_time <= 100 and
-            bsp_time_get_ms() - w_3.device()->last_online_time <= 100 and
-            bsp_time_get_ms() - w_4.device()->last_online_time <= 100 ) {
-	        all_motor_ready_flag = 1;
+            bsp_time_get_ms() - s_4.device()->last_online_time <= 100 ) {
+	        all_servo_motor_ready_flag = 1;
 	    }else {
-	        all_motor_ready_flag = 0;
+	        all_servo_motor_ready_flag = 0;
 	    }
 
 
@@ -283,7 +280,7 @@ void app_chassis_task(void *args) {
 	    auto theta = std::atan2(vy, vx), r = std::sqrt((vx * vx) + (vy * vy));
 	    // 以下均注释则为无解算
 	    // theta -= (ins->yaw * M_PI / 180 +0.00);//底盘陀螺仪正方向解算
-	    theta -= (gimbal()->b_yaw_pos + 1.92);//大yaw轴正方向解算
+	    theta -= (gimbal()->b_yaw_pos + 1.49);//大yaw轴正方向解算
 	    // theta -= (gimbal()->b_yaw_pos + gimbal()->s_yaw_pos_equally * M_PI / 180 + 1.89);//小yaw正方向解算
         //旋转速度的角度前馈,不然小陀螺平移会跑偏
 	    double translation = sqrt(vx*vx + vy*vy);
@@ -291,7 +288,7 @@ void app_chassis_task(void *args) {
 	    vx = r * std::cos(theta), vy = r * std::sin(theta);
 
 
-        if(all_motor_ready_flag == 1) {
+        if(all_servo_motor_ready_flag == 1) {
 
             //防滑控制
             // if(rotate == 0) rotate = eps;
@@ -380,14 +377,20 @@ void app_chassis_task(void *args) {
         }
 
 	    app_msg_vofa_send(E_UART_DEBUG,
-	                                    s_1.device()->angle,  //340
-	                                    s_2.device()->angle,  //4400
-	                                    s_3.device()->angle,  //5119
-	                                    s_4.device()->angle,  //5765
-	                                    w_1.device()->speed,
-	                                    w_2.device()->speed,
-	                                    w_3.device()->speed,
-	                                    w_4.device()->speed
+	                                    // s_1.device()->angle,  //340
+	                                    // s_2.device()->angle,  //4400
+	                                    // s_3.device()->angle,  //5119
+	                                    // s_4.device()->angle,  //5765
+	                                    // w_1.device()->speed,
+	                                    // w_2.device()->speed,
+	                                    // w_3.device()->speed,
+	                                    w_4.device()->speed,
+
+	                                    err_counters.TxErrorCnt,
+	                                    err_counters.RxErrorCnt,
+	                                    err_counters.RxErrorPassive,
+	                                    err_counters.ErrorLogging
+
 	                                    // gimbal()->s_yaw_pos_equally * M_PI / 180,
 	                                    // ins->yaw,
 	                                    // basic::data()->power_heat_data.buffer_energy,
